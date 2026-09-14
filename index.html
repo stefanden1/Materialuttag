@@ -201,30 +201,44 @@ function startScanner(){
  }
  box.classList.remove('hidden');
  qrScanner=new Html5Qrcode('qr-reader',{verbose:false});
- qrScanner.start(
-   { facingMode:'environment', width:{ideal:1920}, height:{ideal:1080} },
-   {
-     fps:12,
-     // Låt scan-rutan täcka 85% av kortaste sidan istället för ett litet fast fönster,
-     // så koden behöver inte träffas lika exakt/nära.
-     qrbox:function(viewfinderWidth,viewfinderHeight){
-       const edge=Math.floor(Math.min(viewfinderWidth,viewfinderHeight)*0.85);
-       return {width:edge,height:edge};
-     },
-     aspectRatio:1.0,
-     // Använd telefonens inbyggda, snabbare QR-avläsare där den finns (nyare Android/Chrome, Safari 17+)
-     experimentalFeatures:{useBarCodeDetectorIfSupported:true}
-   },
-   (decodedText)=>{
-     article.value=decodedText.trim().toUpperCase();
-     status.textContent='QR-kod läst.';
-     stopScanner();
-   },
-   ()=>{}
- ).catch(err=>{
+
+ const qrboxFn=function(viewfinderWidth,viewfinderHeight){
+   // Låt scan-rutan täcka 85% av kortaste sidan istället för ett litet fast fönster,
+   // så koden behöver inte träffas lika exakt/nära.
+   const edge=Math.floor(Math.min(viewfinderWidth,viewfinderHeight)*0.85);
+   return {width:edge,height:edge};
+ };
+ function onScan(decodedText){
+   article.value=decodedText.trim().toUpperCase();
+   status.textContent='QR-kod läst.';
+   stopScanner();
+ }
+ function giveUp(err){
    status.textContent='Kunde inte starta kameran. Kontrollera kameratillståndet.';
    qrScanner=null;
    box.classList.add('hidden');
+ }
+
+ // Försök 1: högre upplösning + telefonens ev. inbyggda (native) QR-avläsare
+ qrScanner.start(
+   { facingMode:'environment' },
+   {
+     fps:12,
+     qrbox:qrboxFn,
+     videoConstraints:{ facingMode:'environment', width:{ideal:1920}, height:{ideal:1080} },
+     // Använd telefonens inbyggda, snabbare QR-avläsare där den finns (nyare Android/Chrome, Safari 17+)
+     experimentalFeatures:{useBarCodeDetectorIfSupported:true}
+   },
+   onScan,
+   ()=>{}
+ ).catch(()=>{
+   // Försök 2: enklare/mer kompatibla inställningar om enheten inte gillade ovanstående
+   qrScanner.start(
+     { facingMode:'environment' },
+     { fps:10, qrbox:qrboxFn },
+     onScan,
+     ()=>{}
+   ).catch(giveUp);
  });
 }
 function stopScanner(){
