@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<link rel="manifest" href="manifest.json">
+<title>Materialuttag</title>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111827}
+.app{max-width:520px;margin:auto;min-height:100vh;background:#fff}
+.top{padding:22px 20px 14px;background:#111827;color:#fff}
+.top h1{margin:0;font-size:25px}.sub{opacity:.75;margin-top:4px;font-size:14px}
+main,section{padding:18px}.card{border:1px solid #e5e7eb;border-radius:16px;padding:16px;margin-bottom:14px;box-shadow:0 2px 8px #00000008}
+button,input,select{font:inherit}
+button{border:0;border-radius:12px;padding:14px 16px;font-weight:700;cursor:pointer}
+.primary{background:#111827;color:#fff;width:100%}
+.secondary{background:#e5e7eb;color:#111827;width:100%;margin-top:9px}
+.danger{background:#fee2e2;color:#991b1b;width:100%;margin-top:9px}
+input,select{width:100%;padding:13px;border:1px solid #d1d5db;border-radius:10px;margin:6px 0 10px;background:#fff}
+label{font-size:13px;font-weight:700;color:#374151}
+.row{display:flex;gap:9px}.row>*{flex:1}
+.order{display:flex;justify-content:space-between;align-items:center;padding:13px;border:1px solid #e5e7eb;border-radius:12px;margin:8px 0}
+.small{font-size:12px;color:#6b7280}.badge{font-size:11px;padding:5px 8px;border-radius:99px;background:#e5e7eb}
+.item{padding:10px 0;border-bottom:1px solid #eee}.hidden{display:none}
+.back{background:none;padding:0;color:#374151;margin-bottom:12px}
+.success{background:#ecfdf5;border:1px solid #a7f3d0;padding:12px;border-radius:12px;margin-bottom:12px}
+.scanbox{height:150px;border:2px dashed #9ca3af;border-radius:16px;display:flex;align-items:center;justify-content:center;text-align:center;color:#6b7280;margin:10px 0}
+.modal.hidden{display:none}.modal{position:fixed;inset:0;background:#0008;display:flex;align-items:center;justify-content:center;padding:22px;z-index:20}
+.modalbox{background:#fff;border-radius:18px;padding:22px;width:min(440px,100%);box-shadow:0 15px 50px #0005}
+#qr-reader{margin:8px 0 10px;overflow:hidden;border-radius:12px}.modalbox h2{margin:0 0 9px}.modalbox p{color:#4b5563;line-height:1.45}
+.modalbuttons{display:flex;gap:10px;margin-top:18px}.modalbuttons button{flex:1}
+</style>
+</head>
+<body>
+<div class="app">
+<header class="top">
+<h1>Materialuttag</h1>
+<div class="sub" id="shiftInfo">Inget aktivt skift</div>
+</header>
+
+<main id="home">
+<div class="card">
+<button class="primary" onclick="startAcute()">UTTAG AKUT</button>
+</div>
+
+<div class="card">
+<b>Uttag med arbetsorder</b>
+<div id="orders"></div>
+<button class="secondary" onclick="show('newOrder')">＋ NY ARBETSORDER</button>
+</div>
+
+<div class="card">
+<b>Dagens uttag</b>
+<div id="count" class="small" style="margin-top:6px"></div>
+<button class="secondary" onclick="show('list')">VISA UTTAG</button>
+</div>
+
+<div class="card">
+<button class="secondary" onclick="show('shift')">SKIFT / ANVÄNDARE</button>
+<button class="secondary" onclick="confirmExport()">EXPORTERA EXCEL</button>
+</div>
+</main>
+
+<section id="newOrder" class="hidden">
+<button class="back" onclick="show('home')">← Tillbaka</button>
+<div class="card">
+<h2>Ny arbetsorder</h2>
+<label>Ordernummer / kostnadsställe</label>
+<input id="orderNo" placeholder="t.ex. 123456">
+<label>Maskin / beskrivning (valfritt)</label>
+<input id="machine" placeholder="t.ex. Maskin 205">
+<button class="primary" onclick="addOrder()">SKAPA ARBETSORDER</button>
+</div>
+</section>
+
+<section id="shift" class="hidden">
+<button class="back" onclick="show('home')">← Tillbaka</button>
+<div class="card">
+<h2>Skift / användare</h2>
+<label>Skift</label>
+<select id="shiftCode">
+<option value="">Välj skift</option>
+<option value="4A">4A</option>
+<option value="4B">4B</option>
+<option value="4C">4C</option>
+<option value="4D">4D</option>
+</select>
+<label>Namn / signatur</label>
+<input id="userName" placeholder="Ange namn eller signatur">
+<button class="primary" onclick="saveShift()">SPARA</button>
+<p class="small">V1.2 använder lokal lagring. Gemensam synkning kopplas in senare.</p>
+</div>
+</section>
+
+<section id="withdraw" class="hidden">
+<button class="back" onclick="show('home')">← Avbryt</button>
+<div class="card">
+<h2 id="withdrawTitle">Materialuttag</h2>
+<div id="selectedOrder" class="success"></div>
+<div id="acuteOrderField" class="hidden">
+<label>Kostnadsställe / ordernummer</label>
+<input id="acuteOrder" placeholder="t.ex. 123456" autocomplete="off">
+</div>
+<label>EAMA-nummer</label>
+<div class="row">
+<input id="article" placeholder="t.ex. EAMA01078" autocomplete="off">
+<button type="button" class="secondary" style="margin-top:6px;max-width:150px" onclick="startScanner()">📷 SKANNA QR</button>
+</div>
+<div id="qr-reader" class="hidden"></div>
+<div id="scanStatus" class="small"></div>
+<label>Antal uttaget</label>
+<input id="qty" type="number" min="1" value="1">
+<label>Antal kvar <span class="small">(frivilligt)</span></label>
+<input id="remaining" type="number" min="0" placeholder="Lämna tomt om du inte vet">
+<button class="secondary" onclick="addItem()">＋ LÄGG TILL ARTIKEL</button>
+<div id="pending"></div>
+<button class="primary" style="margin-top:10px" onclick="register()">REGISTRERA UTTAG</button>
+</div>
+</section>
+
+<section id="list" class="hidden">
+<button class="back" onclick="show('home')">← Tillbaka</button>
+<div class="card">
+<h2>Registrerade uttag</h2>
+<div id="withdrawals"></div>
+</div>
+</section>
+</div>
+
+<div id="exportModal" class="modal hidden">
+<div class="modalbox">
+<h2>Exportera dagen?</h2>
+<p>Vill du exportera dagens uttag och avsluta dagen?</p>
+<div class="modalbuttons">
+<button class="secondary" onclick="closeExportModal()">NEJ</button>
+<button class="primary" onclick="exportAndClear()">JA</button>
+</div>
+</div>
+</div>
+
+<script>
+const key='materialuttag_v1';
+let db=JSON.parse(localStorage.getItem(key)||'{"shift":"","user":"","orders":[],"withdrawals":[]}');
+let currentOrder=null,currentItems=[],acute=false;
+
+function save(){localStorage.setItem(key,JSON.stringify(db));render()}
+function show(id){
+ if(id!=='withdraw') stopScanner();
+ document.querySelectorAll('main,section').forEach(x=>x.classList.add('hidden'));
+ document.getElementById(id).classList.remove('hidden');
+ render();
+}
+function render(){
+ document.getElementById('shiftInfo').textContent=db.shift?`Skift ${db.shift} – ${db.user||'ingen signatur'}`:'Inget aktivt skift';
+ document.getElementById('orders').innerHTML=db.orders.length?
+ db.orders.map((o,i)=>`<div class="order"><div><b>${esc(o.no)}</b><div class="small">${esc(o.machine||'')}</div></div><button onclick="selectOrder(${i})">VÄLJ</button></div>`).join(''):
+ '<p class="small">Inga arbetsorder ännu.</p>';
+ document.getElementById('count').textContent=`${db.withdrawals.length} uttag registrerade`;
+ document.getElementById('withdrawals').innerHTML=db.withdrawals.length?
+ db.withdrawals.map(w=>`<div class="item"><b>${w.time}</b> · ${esc(w.article)} · ${esc(w.order)} · ${w.qty} st · ${w.remaining===''?'–':w.remaining} kvar · ${esc(w.user)}</div>`).join(''):
+ '<p class="small">Inga uttag.</p>';
+}
+function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function addOrder(){
+ let no=orderNo.value.trim(),machineV=machine.value.trim();
+ if(!no)return alert('Ange ordernummer/kostnadsställe.');
+ db.orders.push({no,machine:machineV,done:false});orderNo.value='';machine.value='';save();show('home');
+}
+function selectOrder(i){currentOrder=db.orders[i];acute=false;currentItems=[];openWithdraw()}
+function startAcute(){currentOrder={no:'',machine:''};acute=true;currentItems=[];openWithdraw()}
+function openWithdraw(){
+ show('withdraw');
+ withdrawTitle.textContent=acute?'Uttag akut':'Materialuttag';
+ selectedOrder.innerHTML=acute?
+ '<b>Akut uttag</b><div class="small">Fyll i kostnadsställe/order ovan.</div>':
+ `<b>${esc(currentOrder.no)}</b> ${esc(currentOrder.machine)}`;
+ document.getElementById('acuteOrderField').classList.toggle('hidden',!acute);
+ acuteOrder.value=acute?(currentOrder.no||''):'';
+ article.value='';qty.value=1;remaining.value='';
+ stopScanner();
+ document.getElementById('scanStatus').textContent='';
+ renderPending();
+}
+let qrScanner=null;
+function startScanner(){
+ const box=document.getElementById('qr-reader');
+ const status=document.getElementById('scanStatus');
+ status.textContent='Kameran startar…';
+ if(!window.Html5Qrcode){ status.textContent='QR-funktionen kunde inte laddas. Kontrollera internetanslutningen.'; return; }
+ if(location.protocol!=='https:' && location.hostname!=='localhost' && location.hostname!=='127.0.0.1'){
+   status.textContent='Kameran kräver HTTPS (eller localhost). Sidan måste laddas via https://.';
+   return;
+ }
+ // Stoppa ev. tidigare skanner-instans UTAN att gömma rutan (den bugg som gjorde att kameran aldrig syntes)
+ if(qrScanner){
+   const old=qrScanner; qrScanner=null;
+   old.stop().catch(()=>{}).then(()=>old.clear()).catch(()=>{});
+ }
+ box.classList.remove('hidden');
+ qrScanner=new Html5Qrcode('qr-reader',{verbose:false});
+ qrScanner.start(
+   { facingMode:'environment', width:{ideal:1920}, height:{ideal:1080} },
+   {
+     fps:12,
+     // Låt scan-rutan täcka 85% av kortaste sidan istället för ett litet fast fönster,
+     // så koden behöver inte träffas lika exakt/nära.
+     qrbox:function(viewfinderWidth,viewfinderHeight){
+       const edge=Math.floor(Math.min(viewfinderWidth,viewfinderHeight)*0.85);
+       return {width:edge,height:edge};
+     },
+     aspectRatio:1.0,
+     // Använd telefonens inbyggda, snabbare QR-avläsare där den finns (nyare Android/Chrome, Safari 17+)
+     experimentalFeatures:{useBarCodeDetectorIfSupported:true}
+   },
+   (decodedText)=>{
+     article.value=decodedText.trim().toUpperCase();
+     status.textContent='QR-kod läst.';
+     stopScanner();
+   },
+   ()=>{}
+ ).catch(err=>{
+   status.textContent='Kunde inte starta kameran. Kontrollera kameratillståndet.';
+   qrScanner=null;
+   box.classList.add('hidden');
+ });
+}
+function stopScanner(){
+ if(qrScanner){
+   const s=qrScanner; qrScanner=null;
+   s.stop().catch(()=>{}).then(()=>s.clear()).catch(()=>{});
+ }
+ const box=document.getElementById('qr-reader');
+ if(box)box.classList.add('hidden');
+}
+
+function addItem(){
+ let a=article.value.trim().toUpperCase(),q=parseInt(qty.value,10);
+ if(!a||!q)return alert('Ange EAMA-nummer och antal.');
+ if(acute){
+   let o=acuteOrder.value.trim();
+   if(!o)return alert('Ange kostnadsställe/order för akututtaget.');
+   currentOrder.no=o;
+ }
+ currentItems.push({article:a,qty:q,remaining:remaining.value});
+ article.value='';qty.value=1;remaining.value='';renderPending();
+}
+function renderPending(){
+ pending.innerHTML=currentItems.map((x,i)=>
+ `<div class="item"><b>${esc(x.article)}</b> – ${x.qty} st ${x.remaining===''?'':'· '+x.remaining+' kvar'} <button style="float:right;padding:5px 8px" onclick="currentItems.splice(${i},1);renderPending()">×</button></div>`).join('');
+}
+function register(){
+ if(!currentItems.length)return alert('Lägg till minst en artikel.');
+ if(!db.user)return alert('Ange namn/signatur under SKIFT / ANVÄNDARE.');
+ if(!db.shift)return alert('Välj skift under SKIFT / ANVÄNDARE.');
+ let d=new Date(),time=d.toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit'});
+ currentItems.forEach(x=>db.withdrawals.push({time,article:x.article,order:currentOrder.no,qty:x.qty,remaining:x.remaining,user:db.user,shift:db.shift,acute}));
+ currentItems=[];save();show('home');
+}
+function saveShift(){
+ if(!shiftCode.value)return alert('Välj skift 4A–4D.');
+ if(!userName.value.trim())return alert('Ange namn/signatur.');
+ db.shift=shiftCode.value;db.user=userName.value.trim();save();show('home');
+}
+function confirmExport(){
+ if(!db.withdrawals.length)return alert('Inga uttag att exportera.');
+ document.getElementById('exportModal').classList.remove('hidden');
+}
+function closeExportModal(){document.getElementById('exportModal').classList.add('hidden')}
+function exportAndClear(){
+ const rows=[
+ ['Klockslag','EAMA-nr','Kostnadsställe/order','Antal uttaget','Antal kvar','Signatur'],
+ ...db.withdrawals.slice().sort((a,b)=>a.order.localeCompare(b.order)||a.time.localeCompare(b.time))
+ .map(w=>[w.time,w.article,w.order,w.qty,w.remaining,w.user])
+ ];
+ const csv=rows.map(r=>r.map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(';')).join('\n');
+ const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+ const url=URL.createObjectURL(blob),a=document.createElement('a');
+ a.href=url;a.download=`materialuttag_${db.shift||'skift'}.csv`;
+ document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+ db.withdrawals=[];
+ db.orders=[];
+ closeExportModal();
+ save();
+ alert('Dagen är exporterad och dagens historik är rensad.');
+}
+render();
+</script>
+</body>
+</html>
