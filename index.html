@@ -77,9 +77,10 @@ label{font-size:13px;font-weight:700;color:#374151}
 </section>
 
 <section id="shift" class="hidden">
-<button class="back" onclick="show('home')">← Tillbaka</button>
+<button class="back" onclick="backFromShift()">← Tillbaka</button>
 <div class="card">
 <h2>Skift / användare</h2>
+<div id="shiftNote" class="success hidden"></div>
 <label>Skift</label>
 <select id="shiftCode">
 <option value="">Välj skift</option>
@@ -144,7 +145,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 <script>
 const key='materialuttag_v1';
 let db=JSON.parse(localStorage.getItem(key)||'{"shift":"","user":"","orders":[],"withdrawals":[]}');
-let currentOrder=null,currentItems=[],acute=false;
+let currentOrder=null,currentItems=[],acute=false,pendingReturn=null;
 
 function save(){localStorage.setItem(key,JSON.stringify(db));render()}
 function show(id){
@@ -267,8 +268,14 @@ function renderPending(){
 }
 function register(){
  if(!currentItems.length)return alert('Lägg till minst en artikel.');
- if(!db.user)return alert('Ange namn/signatur under SKIFT / ANVÄNDARE.');
- if(!db.shift)return alert('Välj skift under SKIFT / ANVÄNDARE.');
+ if(!db.user||!db.shift){
+   pendingReturn='withdraw';
+   const note=document.getElementById('shiftNote');
+   note.textContent='Fyll i skift och signatur för att slutföra uttaget. Dina ifyllda artiklar sparas och du kommer tillbaka hit automatiskt.';
+   note.classList.remove('hidden');
+   show('shift');
+   return;
+ }
  let d=new Date(),time=d.toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit'});
  currentItems.forEach(x=>db.withdrawals.push({time,article:x.article,order:currentOrder.no,qty:x.qty,remaining:x.remaining,user:db.user,shift:db.shift,acute}));
  currentItems=[];save();show('home');
@@ -276,7 +283,15 @@ function register(){
 function saveShift(){
  if(!shiftCode.value)return alert('Välj skift 4A–4D.');
  if(!userName.value.trim())return alert('Ange namn/signatur.');
- db.shift=shiftCode.value;db.user=userName.value.trim();save();show('home');
+ db.shift=shiftCode.value;db.user=userName.value.trim();save();
+ document.getElementById('shiftNote').classList.add('hidden');
+ const target=pendingReturn||'home';pendingReturn=null;
+ show(target);
+}
+function backFromShift(){
+ document.getElementById('shiftNote').classList.add('hidden');
+ const target=pendingReturn||'home';pendingReturn=null;
+ show(target);
 }
 function confirmExport(){
  if(!db.withdrawals.length)return alert('Inga uttag att exportera.');
