@@ -200,12 +200,28 @@ function startScanner(){
    old.stop().catch(()=>{}).then(()=>old.clear()).catch(()=>{});
  }
  box.classList.remove('hidden');
- qrScanner=new Html5Qrcode('qr-reader');
- qrScanner.start({facingMode:'environment'},{fps:10,qrbox:{width:240,height:160}},(decodedText)=>{
-   article.value=decodedText.trim().toUpperCase();
-   status.textContent='QR-kod läst.';
-   stopScanner();
- },()=>{}).catch(err=>{
+ qrScanner=new Html5Qrcode('qr-reader',{verbose:false});
+ qrScanner.start(
+   { facingMode:'environment', width:{ideal:1920}, height:{ideal:1080} },
+   {
+     fps:12,
+     // Låt scan-rutan täcka 85% av kortaste sidan istället för ett litet fast fönster,
+     // så koden behöver inte träffas lika exakt/nära.
+     qrbox:function(viewfinderWidth,viewfinderHeight){
+       const edge=Math.floor(Math.min(viewfinderWidth,viewfinderHeight)*0.85);
+       return {width:edge,height:edge};
+     },
+     aspectRatio:1.0,
+     // Använd telefonens inbyggda, snabbare QR-avläsare där den finns (nyare Android/Chrome, Safari 17+)
+     experimentalFeatures:{useBarCodeDetectorIfSupported:true}
+   },
+   (decodedText)=>{
+     article.value=decodedText.trim().toUpperCase();
+     status.textContent='QR-kod läst.';
+     stopScanner();
+   },
+   ()=>{}
+ ).catch(err=>{
    status.textContent='Kunde inte starta kameran. Kontrollera kameratillståndet.';
    qrScanner=null;
    box.classList.add('hidden');
