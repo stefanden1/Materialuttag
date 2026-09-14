@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#111827">
 <link rel="manifest" href="manifest.json">
 <title>Materialuttag</title>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <style>
 *{box-sizing:border-box}
 body{margin:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111827}
@@ -29,7 +30,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 .scanbox{height:150px;border:2px dashed #9ca3af;border-radius:16px;display:flex;align-items:center;justify-content:center;text-align:center;color:#6b7280;margin:10px 0}
 .modal.hidden{display:none}.modal{position:fixed;inset:0;background:#0008;display:flex;align-items:center;justify-content:center;padding:22px;z-index:20}
 .modalbox{background:#fff;border-radius:18px;padding:22px;width:min(440px,100%);box-shadow:0 15px 50px #0005}
-.modalbox h2{margin:0 0 9px}.modalbox p{color:#4b5563;line-height:1.45}
+#qr-reader{margin:8px 0 10px;overflow:hidden;border-radius:12px}.modalbox h2{margin:0 0 9px}.modalbox p{color:#4b5563;line-height:1.45}
 .modalbuttons{display:flex;gap:10px;margin-top:18px}.modalbuttons button{flex:1}
 </style>
 </head>
@@ -42,13 +43,13 @@ label{font-size:13px;font-weight:700;color:#374151}
 
 <main id="home">
 <div class="card">
-<b>Uttag med arbetsorder</b>
-<div id="orders"></div>
-<button class="secondary" onclick="show('newOrder')">＋ NY ARBETSORDER</button>
+<button class="primary" onclick="startAcute()">UTTAG AKUT</button>
 </div>
 
 <div class="card">
-<button class="primary" onclick="startAcute()">UTTAG AKUT</button>
+<b>Uttag med arbetsorder</b>
+<div id="orders"></div>
+<button class="secondary" onclick="show('newOrder')">＋ NY ARBETSORDER</button>
 </div>
 
 <div class="card">
@@ -88,7 +89,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 <option value="4D">4D</option>
 </select>
 <label>Namn / signatur</label>
-<input id="userName" placeholder="t.ex. Stefan K">
+<input id="userName" placeholder="Ange namn eller signatur">
 <button class="primary" onclick="saveShift()">SPARA</button>
 <p class="small">V1.2 använder lokal lagring. Gemensam synkning kopplas in senare.</p>
 </div>
@@ -99,9 +100,17 @@ label{font-size:13px;font-weight:700;color:#374151}
 <div class="card">
 <h2 id="withdrawTitle">Materialuttag</h2>
 <div id="selectedOrder" class="success"></div>
+<div id="acuteOrderField" class="hidden">
+<label>Kostnadsställe / ordernummer</label>
+<input id="acuteOrder" placeholder="t.ex. 123456" autocomplete="off">
+</div>
 <label>EAMA-nummer</label>
+<div class="row">
 <input id="article" placeholder="t.ex. EAMA01078" autocomplete="off">
-<div class="scanbox">QR-skanning kopplas in i nästa steg.<br>V1.2 kan testas genom att skriva EAMA-numret här.</div>
+<button type="button" class="secondary" style="margin-top:6px;max-width:150px" onclick="startScanner()">📷 SKANNA QR</button>
+</div>
+<div id="qr-reader" class="hidden"></div>
+<div id="scanStatus" class="small"></div>
 <label>Antal uttaget</label>
 <input id="qty" type="number" min="1" value="1">
 <label>Antal kvar <span class="small">(frivilligt)</span></label>
@@ -139,6 +148,7 @@ let currentOrder=null,currentItems=[],acute=false;
 
 function save(){localStorage.setItem(key,JSON.stringify(db));render()}
 function show(id){
+ if(id!=='withdraw') stopScanner();
  document.querySelectorAll('main,section').forEach(x=>x.classList.add('hidden'));
  document.getElementById(id).classList.remove('hidden');
  render();
@@ -165,17 +175,49 @@ function openWithdraw(){
  show('withdraw');
  withdrawTitle.textContent=acute?'Uttag akut':'Materialuttag';
  selectedOrder.innerHTML=acute?
- '🚨 <b>Akut uttag</b><div class="small">Kostnadsställe/order anges för uttaget.</div>':
+ '<b>Akut uttag</b><div class="small">Fyll i kostnadsställe/order ovan.</div>':
  `<b>${esc(currentOrder.no)}</b> ${esc(currentOrder.machine)}`;
- article.value='';qty.value=1;remaining.value='';renderPending();
+ document.getElementById('acuteOrderField').classList.toggle('hidden',!acute);
+ acuteOrder.value=acute?(currentOrder.no||''):'';
+ article.value='';qty.value=1;remaining.value='';
+ stopScanner();
+ document.getElementById('scanStatus').textContent='';
+ renderPending();
 }
+let qrScanner=null;
+function startScanner(){
+ const box=document.getElementById('qr-reader');
+ const status=document.getElementById('scanStatus');
+ box.classList.remove('hidden');
+ status.textContent='Kameran startar…';
+ if(!window.Html5Qrcode){ status.textContent='QR-funktionen kunde inte laddas. Kontrollera internetanslutningen.'; return; }
+ stopScanner();
+ qrScanner=new Html5Qrcode('qr-reader');
+ qrScanner.start({facingMode:'environment'},{fps:10,qrbox:{width:240,height:160}},(decodedText)=>{
+   article.value=decodedText.trim().toUpperCase();
+   status.textContent='QR-kod läst.';
+   stopScanner();
+ },()=>{}).catch(err=>{
+   status.textContent='Kunde inte starta kameran. Kontrollera kameratillståndet.';
+   qrScanner=null;
+ });
+}
+function stopScanner(){
+ if(qrScanner){
+   const s=qrScanner; qrScanner=null;
+   s.stop().catch(()=>{}).then(()=>s.clear()).catch(()=>{});
+ }
+ const box=document.getElementById('qr-reader');
+ if(box)box.classList.add('hidden');
+}
+
 function addItem(){
  let a=article.value.trim().toUpperCase(),q=parseInt(qty.value,10);
  if(!a||!q)return alert('Ange EAMA-nummer och antal.');
- if(acute&&!currentOrder.no){
-   let o=prompt('Ange kostnadsställe/order för akututtaget:');
-   if(!o)return;
-   currentOrder.no=o.trim();
+ if(acute){
+   let o=acuteOrder.value.trim();
+   if(!o)return alert('Ange kostnadsställe/order för akututtaget.');
+   currentOrder.no=o;
  }
  currentItems.push({article:a,qty:q,remaining:remaining.value});
  article.value='';qty.value=1;remaining.value='';renderPending();
