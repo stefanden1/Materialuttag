@@ -188,10 +188,18 @@ let qrScanner=null;
 function startScanner(){
  const box=document.getElementById('qr-reader');
  const status=document.getElementById('scanStatus');
- box.classList.remove('hidden');
  status.textContent='Kameran startar…';
  if(!window.Html5Qrcode){ status.textContent='QR-funktionen kunde inte laddas. Kontrollera internetanslutningen.'; return; }
- stopScanner();
+ if(location.protocol!=='https:' && location.hostname!=='localhost' && location.hostname!=='127.0.0.1'){
+   status.textContent='Kameran kräver HTTPS (eller localhost). Sidan måste laddas via https://.';
+   return;
+ }
+ // Stoppa ev. tidigare skanner-instans UTAN att gömma rutan (den bugg som gjorde att kameran aldrig syntes)
+ if(qrScanner){
+   const old=qrScanner; qrScanner=null;
+   old.stop().catch(()=>{}).then(()=>old.clear()).catch(()=>{});
+ }
+ box.classList.remove('hidden');
  qrScanner=new Html5Qrcode('qr-reader');
  qrScanner.start({facingMode:'environment'},{fps:10,qrbox:{width:240,height:160}},(decodedText)=>{
    article.value=decodedText.trim().toUpperCase();
@@ -200,6 +208,7 @@ function startScanner(){
  },()=>{}).catch(err=>{
    status.textContent='Kunde inte starta kameran. Kontrollera kameratillståndet.';
    qrScanner=null;
+   box.classList.add('hidden');
  });
 }
 function stopScanner(){
