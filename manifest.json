@@ -1,1 +1,9 @@
-{"name":"Materialuttag V1","short_name":"Materialuttag","start_url":"./","display":"standalone","background_color":"#ffffff","theme_color":"#111827","lang":"sv"}
+{
+  "name":"Materialuttag",
+  "short_name":"Materialuttag",
+  "start_url":"./",
+  "display":"standalone",
+  "background_color":"#ffffff",
+  "theme_color":"#111827",
+  "lang":"sv"
+}
