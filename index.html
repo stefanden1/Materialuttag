@@ -161,11 +161,14 @@ let currentOrder=null,currentItems=[],acute=false,pendingReturn=null;
 // 3. Klistra in din config nedan (Project settings → dina appar → SDK-config)
 // Så länge apiKey nedan är "YOUR_API_KEY" körs appen helt lokalt, precis som innan.
 const firebaseConfig = {
- apiKey: "YOUR_API_KEY",
- authDomain: "YOUR_PROJECT.firebaseapp.com",
- databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
- projectId: "YOUR_PROJECT"
+apiKey: "AIzaSyBVpTeqL_8-VLOJ9MtdEi9OrlpMVcNRLN0",
+authDomain: "materialuttag.firebaseapp.com",
+projectId: "materialuttag",
+storageBucket: "materialuttag.firebasestorage.app",
+messagingSenderId: "246268725057",
+appId: "1:246268725057:web:cda318b487ea15863f03c0"
 };
+
 const firebaseEnabled = firebaseConfig.apiKey !== "YOUR_API_KEY" && !!window.firebase;
 let fbdb=null,ordersRef=null,withdrawalsRef=null;
 if(firebaseEnabled){
