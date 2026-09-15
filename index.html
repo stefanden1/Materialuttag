@@ -33,7 +33,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 #qr-reader{margin:8px 0 10px;overflow:hidden;border-radius:12px}.modalbox h2{margin:0 0 9px}.modalbox p{color:#4b5563;line-height:1.45}
 .modalbuttons{display:flex;gap:10px;margin-top:18px}.modalbuttons button{flex:1}
 .withdrawrow{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
-.withdrawrow .del{background:#fee2e2;color:#991b1b;padding:6px 10px;border-radius:10px;font-size:12px;font-weight:700;white-space:nowrap}
+.del{background:#fee2e2;color:#991b1b;padding:6px 10px;border-radius:10px;font-size:12px;font-weight:700;white-space:nowrap}
 .comment{color:#374151;font-style:italic}
 </style>
 </head>
@@ -163,7 +163,7 @@ function show(id){
 function render(){
  document.getElementById('shiftInfo').textContent=db.shift?`Skift ${db.shift} – ${db.user||'ingen signatur'}`:'Inget aktivt skift';
  document.getElementById('orders').innerHTML=db.orders.length?
- db.orders.map((o,i)=>`<div class="order"><div><b>${esc(o.no)}</b><div class="small">${esc(o.machine||'')}</div></div><button onclick="selectOrder(${i})">VÄLJ</button></div>`).join(''):
+ db.orders.map((o,i)=>`<div class="order"><div><b>${esc(o.no)}</b><div class="small">${esc(o.machine||'')}</div></div><div style="display:flex;gap:6px"><button onclick="selectOrder(${i})">VÄLJ</button><button class="del" style="padding:9px 10px" onclick="removeOrder(${i})">×</button></div></div>`).join(''):
  '<p class="small">Inga arbetsorder ännu.</p>';
  document.getElementById('count').textContent=`${db.withdrawals.length} uttag registrerade`;
  document.getElementById('withdrawals').innerHTML=db.withdrawals.length?
@@ -181,6 +181,12 @@ function removeWithdrawal(i){
  const w=db.withdrawals[i];
  if(!confirm(`Ta bort uttaget ${w.article} (${w.qty} st) från ${w.time}?`))return;
  db.withdrawals.splice(i,1);
+ save();
+}
+function removeOrder(i){
+ const o=db.orders[i];
+ if(!confirm(`Ta bort arbetsordern ${o.no}?`))return;
+ db.orders.splice(i,1);
  save();
 }
 function addOrder(){
