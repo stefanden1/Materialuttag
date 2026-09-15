@@ -163,12 +163,12 @@ let currentOrder=null,currentItems=[],acute=false,pendingReturn=null;
 const firebaseConfig = {
 apiKey: "AIzaSyBVpTeqL_8-VLOJ9MtdEi9OrlpMVcNRLN0",
 authDomain: "materialuttag.firebaseapp.com",
+databaseURL: "https://console.firebase.google.com/project/materialuttag/database/materialuttag-default-rtdb/data/~2F",
 projectId: "materialuttag",
 storageBucket: "materialuttag.firebasestorage.app",
 messagingSenderId: "246268725057",
 appId: "1:246268725057:web:cda318b487ea15863f03c0"
 };
-
 const firebaseEnabled = firebaseConfig.apiKey !== "YOUR_API_KEY" && !!window.firebase;
 let fbdb=null,ordersRef=null,withdrawalsRef=null;
 if(firebaseEnabled){
