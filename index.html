@@ -176,7 +176,7 @@ function openWithdraw(){
  show('withdraw');
  withdrawTitle.textContent=acute?'Uttag akut':'Materialuttag';
  selectedOrder.innerHTML=acute?
- '<b>Akut uttag</b><div class="small">Fyll i kostnadsställe/order under.</div>':
+ '<b>Akut uttag</b><div class="small">Fyll i kostnadsställe/order.</div>':
  `<b>${esc(currentOrder.no)}</b> ${esc(currentOrder.machine)}`;
  document.getElementById('acuteOrderField').classList.toggle('hidden',!acute);
  acuteOrder.value=acute?(currentOrder.no||''):'';
