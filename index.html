@@ -7,6 +7,8 @@
 <link rel="manifest" href="manifest.json">
 <title>Materialuttag</title>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
 <style>
 *{box-sizing:border-box}
 body{margin:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111827}
@@ -96,7 +98,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 <label>Namn / signatur</label>
 <input id="userName" placeholder="Ange namn eller signatur">
 <button class="primary" onclick="saveShift()">SPARA</button>
-<p class="small">V1.2 använder lokal lagring. Gemensam synkning kopplas in senare.</p>
+<p class="small" id="syncStatus"></p>
 </div>
 </section>
 
@@ -153,6 +155,44 @@ const key='materialuttag_v1';
 let db=JSON.parse(localStorage.getItem(key)||'{"shift":"","user":"","orders":[],"withdrawals":[]}');
 let currentOrder=null,currentItems=[],acute=false,pendingReturn=null;
 
+// ====== FIREBASE-KONFIGURATION (för synk mellan flera användare) ======
+// 1. Skapa ett gratis projekt på https://console.firebase.google.com
+// 2. Lägg till en "Realtime Database" (starta i testläge)
+// 3. Klistra in din config nedan (Project settings → dina appar → SDK-config)
+// Så länge apiKey nedan är "YOUR_API_KEY" körs appen helt lokalt, precis som innan.
+const firebaseConfig = {
+ apiKey: "YOUR_API_KEY",
+ authDomain: "YOUR_PROJECT.firebaseapp.com",
+ databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+ projectId: "YOUR_PROJECT"
+};
+const firebaseEnabled = firebaseConfig.apiKey !== "YOUR_API_KEY" && !!window.firebase;
+let fbdb=null,ordersRef=null,withdrawalsRef=null;
+if(firebaseEnabled){
+ firebase.initializeApp(firebaseConfig);
+ fbdb=firebase.database();
+}
+function subscribeShift(shift){
+ if(!firebaseEnabled)return;
+ if(ordersRef)ordersRef.off();
+ if(withdrawalsRef)withdrawalsRef.off();
+ ordersRef=null;withdrawalsRef=null;
+ if(!shift)return;
+ ordersRef=fbdb.ref('shifts/'+shift+'/orders');
+ withdrawalsRef=fbdb.ref('shifts/'+shift+'/withdrawals');
+ ordersRef.on('value',snap=>{
+  const val=snap.val()||{};
+  db.orders=Object.keys(val).map(id=>({id,...val[id]}));
+  localStorage.setItem(key,JSON.stringify(db));render();
+ });
+ withdrawalsRef.on('value',snap=>{
+  const val=snap.val()||{};
+  db.withdrawals=Object.keys(val).map(id=>({id,...val[id]})).sort((a,b)=>(a.ts||0)-(b.ts||0));
+  localStorage.setItem(key,JSON.stringify(db));render();
+ });
+}
+if(firebaseEnabled && db.shift)subscribeShift(db.shift);
+
 function save(){localStorage.setItem(key,JSON.stringify(db));render()}
 function show(id){
  if(id!=='withdraw') stopScanner();
@@ -166,6 +206,8 @@ function render(){
  db.orders.map((o,i)=>`<div class="order"><div><b>${esc(o.no)}</b><div class="small">${esc(o.machine||'')}</div></div><div style="display:flex;gap:6px"><button onclick="selectOrder(${i})">VÄLJ</button><button class="del" style="padding:9px 10px" onclick="removeOrder(${i})">×</button></div></div>`).join(''):
  '<p class="small">Inga arbetsorder ännu.</p>';
  document.getElementById('count').textContent=`${db.withdrawals.length} uttag registrerade`;
+ const syncEl=document.getElementById('syncStatus');
+ if(syncEl)syncEl.textContent=firebaseEnabled?(db.shift?`🔄 Synkar live med skift ${db.shift}.`:'Välj skift för att synka uttag/arbetsorder med andra.'):'Synk är inte konfigurerad – appen körs lokalt på den här enheten.';
  document.getElementById('withdrawals').innerHTML=db.withdrawals.length?
  db.withdrawals.map((w,i)=>`<div class="item withdrawrow">
    <div>
@@ -180,19 +222,33 @@ function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&l
 function removeWithdrawal(i){
  const w=db.withdrawals[i];
  if(!confirm(`Ta bort uttaget ${w.article} (${w.qty} st) från ${w.time}?`))return;
- db.withdrawals.splice(i,1);
+ if(firebaseEnabled && db.shift && w.id){
+  fbdb.ref('shifts/'+db.shift+'/withdrawals/'+w.id).remove();
+ } else {
+  db.withdrawals.splice(i,1);
+ }
  save();
 }
 function removeOrder(i){
  const o=db.orders[i];
  if(!confirm(`Ta bort arbetsordern ${o.no}?`))return;
- db.orders.splice(i,1);
+ if(firebaseEnabled && db.shift && o.id){
+  fbdb.ref('shifts/'+db.shift+'/orders/'+o.id).remove();
+ } else {
+  db.orders.splice(i,1);
+ }
  save();
 }
 function addOrder(){
  let no=orderNo.value.trim(),machineV=machine.value.trim();
  if(!no)return alert('Ange ordernummer/kostnadsställe.');
- db.orders.push({no,machine:machineV,done:false});orderNo.value='';machine.value='';save();show('home');
+ const o={no,machine:machineV,done:false};
+ if(firebaseEnabled && db.shift && ordersRef){
+  ordersRef.push(o);
+ } else {
+  db.orders.push(o);
+ }
+ orderNo.value='';machine.value='';save();show('home');
 }
 function selectOrder(i){currentOrder=db.orders[i];acute=false;currentItems=[];openWithdraw()}
 function startAcute(){currentOrder={no:'',machine:''};acute=true;currentItems=[];openWithdraw()}
@@ -301,13 +357,22 @@ function register(){
    return;
  }
  let d=new Date(),time=d.toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit'});
- currentItems.forEach(x=>db.withdrawals.push({time,article:x.article,order:currentOrder.no,qty:x.qty,remaining:x.remaining,comment:x.comment||'',user:db.user,shift:db.shift,acute}));
+ currentItems.forEach(x=>{
+  const rec={time,article:x.article,order:currentOrder.no,qty:x.qty,remaining:x.remaining,comment:x.comment||'',user:db.user,shift:db.shift,acute,ts:d.getTime()};
+  if(firebaseEnabled && withdrawalsRef){
+   withdrawalsRef.push(rec);
+  } else {
+   db.withdrawals.push(rec);
+  }
+ });
  currentItems=[];save();show('home');
 }
 function saveShift(){
  if(!shiftCode.value)return alert('Välj skift.');
  if(!userName.value.trim())return alert('Ange namn/signatur.');
- db.shift=shiftCode.value;db.user=userName.value.trim();save();
+ db.shift=shiftCode.value;db.user=userName.value.trim();
+ subscribeShift(db.shift);
+ save();
  document.getElementById('shiftNote').classList.add('hidden');
  const target=pendingReturn||'home';pendingReturn=null;
  show(target);
@@ -333,6 +398,10 @@ function exportAndClear(){
  const url=URL.createObjectURL(blob),a=document.createElement('a');
  a.href=url;a.download=`materialuttag_${db.shift||'skift'}.csv`;
  document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+ if(firebaseEnabled && db.shift){
+  if(withdrawalsRef)withdrawalsRef.set(null);
+  if(ordersRef)ordersRef.set(null);
+ }
  db.withdrawals=[];
  db.orders=[];
  closeExportModal();
