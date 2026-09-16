@@ -37,6 +37,14 @@ label{font-size:13px;font-weight:700;color:#374151}
 .withdrawrow{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
 .del{background:#fee2e2;color:#991b1b;padding:6px 10px;border-radius:10px;font-size:12px;font-weight:700;white-space:nowrap}
 .comment{color:#374151;font-style:italic}
+.acwrap{position:relative}
+.acsuggest{position:absolute;left:0;right:0;top:calc(100% - 6px);background:#fff;border:1px solid #d1d5db;border-radius:10px;box-shadow:0 8px 24px #0002;max-height:220px;overflow-y:auto;z-index:15}
+.acsuggest .aci{padding:10px 13px;cursor:pointer;border-bottom:1px solid #f0f0f0}
+.acsuggest .aci:last-child{border-bottom:none}
+.acsuggest .aci:active,.acsuggest .aci:hover{background:#f3f4f6}
+.acsuggest .aci b{display:block;font-size:14px}
+.acsuggest .aci span{font-size:12px;color:#6b7280}
+.acsuggest .acnone{padding:10px 13px;font-size:12px;color:#9ca3af}
 </style>
 </head>
 <body>
@@ -109,7 +117,10 @@ label{font-size:13px;font-weight:700;color:#374151}
 <div id="selectedOrder" class="success"></div>
 <div id="acuteOrderField" class="hidden">
 <label>Kostnadsställe / ordernummer</label>
-<input id="acuteOrder" placeholder="t.ex. 123456" autocomplete="off">
+<div class="acwrap">
+<input id="acuteOrder" placeholder="Sök på maskin eller kostnadsställe…" autocomplete="off" oninput="onAcuteOrderInput()" onfocus="onAcuteOrderInput()">
+<div id="acuteSuggest" class="acsuggest hidden"></div>
+</div>
 </div>
 <label>EAMA-nummer</label>
 <div class="row">
@@ -196,6 +207,51 @@ function subscribeShift(shift){
 }
 if(firebaseEnabled && db.shift)subscribeShift(db.shift);
 
+// ====== MASKIN/KOSTNADSSTÄLLE-REGISTER ======
+// Läser det befintliga registret som redan finns i Firebase under "register/machines"
+// och "register/costCenters" (fylls på av dig separat, t.ex. från Excel-export).
+// Appen skriver aldrig till detta register – den bara söker i det vid AKUTUTTAG.
+let registerMachinesList=[];
+let registerCostCentersList=[];
+if(firebaseEnabled){
+ fbdb.ref('register/machines').on('value',snap=>{
+  const val=snap.val()||{};
+  registerMachinesList=Object.keys(val).map(k=>({
+   no:val[k].machineNo||k,
+   name:val[k].name||'',
+   costCenter:val[k].costCenter||'',
+   manufacturer:val[k].manufacturer||''
+  }));
+  onAcuteOrderInput();
+ });
+ fbdb.ref('register/costCenters').on('value',snap=>{
+  const val=snap.val()||{};
+  registerCostCentersList=Object.keys(val).map(k=>({
+   costCenter:val[k].costCenter||'',
+   name:val[k].name||''
+  }));
+  onAcuteOrderInput();
+ });
+}
+function searchRegister(q){
+ const out=[];
+ registerMachinesList.forEach(m=>{
+  const hay=(m.no+' '+m.name+' '+m.manufacturer+' '+m.costCenter).toLowerCase();
+  if(hay.includes(q)){
+   const value=m.costCenter||m.no;
+   const label=[m.name,m.no?('Maskin '+m.no):'',m.costCenter?('KST '+m.costCenter):''].filter(Boolean).join(' · ');
+   out.push({value,label});
+  }
+ });
+ registerCostCentersList.forEach(c=>{
+  const hay=(c.costCenter+' '+c.name).toLowerCase();
+  if(hay.includes(q)){
+   out.push({value:c.costCenter,label:[c.name,'KST '+c.costCenter].filter(Boolean).join(' · ')});
+  }
+ });
+ return out;
+}
+
 function save(){localStorage.setItem(key,JSON.stringify(db));render()}
 function show(id){
  if(id!=='withdraw') stopScanner();
@@ -263,6 +319,7 @@ function openWithdraw(){
  `<b>${esc(currentOrder.no)}</b> ${esc(currentOrder.machine)}`;
  document.getElementById('acuteOrderField').classList.toggle('hidden',!acute);
  acuteOrder.value=acute?(currentOrder.no||''):'';
+ hideAcuteSuggest();
  article.value='';qty.value=1;remaining.value='';comment.value='';
  stopScanner();
  document.getElementById('scanStatus').textContent='';
@@ -333,6 +390,43 @@ function stopScanner(){
  const box=document.getElementById('qr-reader');
  if(box)box.classList.add('hidden');
 }
+
+// ====== SÖK/AUTOCOMPLETE FÖR AKUTUTTAG (maskin eller kostnadsställe) ======
+let acuteSuggestMatches=[];
+function onAcuteOrderInput(){
+ if(!acute)return;
+ const box=document.getElementById('acuteSuggest');
+ const q=acuteOrder.value.trim().toLowerCase();
+ if(!q){box.classList.add('hidden');box.innerHTML='';acuteSuggestMatches=[];return}
+ acuteSuggestMatches=searchRegister(q).slice(0,8);
+ if(!acuteSuggestMatches.length){
+  box.innerHTML='<div class="acnone">Inga träffar i registret.</div>';
+ } else {
+  box.innerHTML=acuteSuggestMatches.map((m,i)=>
+   `<div class="aci" data-idx="${i}"><b>${esc(m.value)}</b>${m.label?`<span>${esc(m.label)}</span>`:''}</div>`
+  ).join('');
+ }
+ box.classList.remove('hidden');
+}
+function selectAcuteSuggestion(value){
+ acuteOrder.value=value;
+ hideAcuteSuggest();
+}
+function hideAcuteSuggest(){
+ const box=document.getElementById('acuteSuggest');
+ if(box){box.classList.add('hidden');box.innerHTML='';}
+ acuteSuggestMatches=[];
+}
+document.getElementById('acuteSuggest').addEventListener('mousedown',e=>{
+ const item=e.target.closest('.aci');
+ if(!item)return;
+ e.preventDefault();
+ const m=acuteSuggestMatches[parseInt(item.dataset.idx,10)];
+ if(m)selectAcuteSuggestion(m.value);
+});
+document.addEventListener('click',e=>{
+ if(!e.target.closest('.acwrap'))hideAcuteSuggest();
+});
 
 function addItem(){
  let a=article.value.trim().toUpperCase(),q=parseInt(qty.value,10);
