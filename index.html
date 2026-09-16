@@ -124,7 +124,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 </div>
 <label>EAMA-nummer</label>
 <div class="row">
-<input id="article" placeholder="t.ex. EAMA01078" autocomplete="off">
+<input id="article" placeholder="Skriv siffror – EAMA läggs till automatiskt" autocomplete="off" oninput="onArticleInput()">
 <button type="button" class="secondary" style="margin-top:6px;max-width:150px" onclick="startScanner()">📷 SKANNA QR</button>
 </div>
 <div id="qr-reader" class="hidden"></div>
@@ -434,6 +434,25 @@ document.getElementById('acuteSuggest').addEventListener('mousedown',e=>{
 document.addEventListener('click',e=>{
  if(!e.target.closest('.acwrap'))hideAcuteSuggest();
 });
+
+// ====== AUTO-PREFIX "EAMA" I EAMA-NUMMER-FÄLTET (manuell inmatning) ======
+// Alla artiklar börjar med EAMA, så det räcker att skriva siffrorna själv.
+// QR-skanning sätter redan hela koden och påverkas inte av detta.
+function onArticleInput(){
+ const el=article;
+ let v=el.value.toUpperCase();
+ let pos=el.selectionStart;
+ if(v!==el.value){
+  el.value=v;
+  el.setSelectionRange(pos,pos);
+ }
+ if(/^EAMA/.test(v))return;
+ if(/^[0-9]+$/.test(v)){
+  el.value='EAMA'+v;
+  const newPos=pos+4;
+  el.setSelectionRange(newPos,newPos);
+ }
+}
 
 function addItem(){
  let a=article.value.trim().toUpperCase(),q=parseInt(qty.value,10);
