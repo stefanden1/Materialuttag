@@ -118,7 +118,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 <div id="acuteOrderField" class="hidden">
 <label>Kostnadsställe / ordernummer</label>
 <div class="acwrap">
-<input id="acuteOrder" placeholder="Sök på maskin eller kostnadsställe…" autocomplete="off" oninput="onAcuteOrderInput()" onfocus="onAcuteOrderInput()">
+<input id="acuteOrder" placeholder="Sök på maskin eller kostnadsställe…" autocomplete="off" oninput="onAcuteOrderTyped()" onfocus="refreshAcuteSuggestions()">
 <div id="acuteSuggest" class="acsuggest hidden"></div>
 </div>
 </div>
@@ -222,7 +222,7 @@ if(firebaseEnabled){
    costCenter:val[k].costCenter||'',
    manufacturer:val[k].manufacturer||''
   }));
-  onAcuteOrderInput();
+  refreshAcuteSuggestions();
  });
  fbdb.ref('register/costCenters').on('value',snap=>{
   const val=snap.val()||{};
@@ -230,7 +230,7 @@ if(firebaseEnabled){
    costCenter:val[k].costCenter||'',
    name:val[k].name||''
   }));
-  onAcuteOrderInput();
+  refreshAcuteSuggestions();
  });
 }
 function searchRegister(q){
@@ -240,13 +240,13 @@ function searchRegister(q){
   if(hay.includes(q)){
    const value=m.costCenter||m.no;
    const label=[m.name,m.no?('Maskin '+m.no):'',m.costCenter?('KST '+m.costCenter):''].filter(Boolean).join(' · ');
-   out.push({value,label});
+   out.push({value,label,machineNo:m.no,machineName:m.name});
   }
  });
  registerCostCentersList.forEach(c=>{
   const hay=(c.costCenter+' '+c.name).toLowerCase();
   if(hay.includes(q)){
-   out.push({value:c.costCenter,label:[c.name,'KST '+c.costCenter].filter(Boolean).join(' · ')});
+   out.push({value:c.costCenter,label:[c.name,'KST '+c.costCenter].filter(Boolean).join(' · '),machineNo:'',machineName:c.name});
   }
  });
  return out;
@@ -270,7 +270,7 @@ function render(){
  document.getElementById('withdrawals').innerHTML=db.withdrawals.length?
  db.withdrawals.map((w,i)=>`<div class="item withdrawrow">
    <div>
-     <b>${w.time}</b> · ${esc(w.article)} · ${esc(w.order)} · ${w.qty} st · ${w.remaining===''?'–':w.remaining} kvar · ${esc(w.user)}
+     <b>${w.time}</b> · ${esc(w.article)} · KST ${esc(w.order)}${w.machine?(' · '+esc(w.machine)):''} · ${w.qty} st · ${w.remaining===''?'–':w.remaining} kvar · ${esc(w.user)}
      ${w.comment?`<div class="small comment">${esc(w.comment)}</div>`:''}
    </div>
    <button class="del" onclick="removeWithdrawal(${i})">TA BORT</button>
@@ -319,6 +319,7 @@ function openWithdraw(){
  `<b>${esc(currentOrder.no)}</b> ${esc(currentOrder.machine)}`;
  document.getElementById('acuteOrderField').classList.toggle('hidden',!acute);
  acuteOrder.value=acute?(currentOrder.no||''):'';
+ acuteSelectedMachine=null;
  hideAcuteSuggest();
  article.value='';qty.value=1;remaining.value='';comment.value='';
  stopScanner();
@@ -393,7 +394,12 @@ function stopScanner(){
 
 // ====== SÖK/AUTOCOMPLETE FÖR AKUTUTTAG (maskin eller kostnadsställe) ======
 let acuteSuggestMatches=[];
-function onAcuteOrderInput(){
+let acuteSelectedMachine=null; // {no,name} från vald registerträff, för bakåtspårning
+function onAcuteOrderTyped(){
+ acuteSelectedMachine=null; // manuell redigering ogiltigförklarar tidigare val
+ refreshAcuteSuggestions();
+}
+function refreshAcuteSuggestions(){
  if(!acute)return;
  const box=document.getElementById('acuteSuggest');
  const q=acuteOrder.value.trim().toLowerCase();
@@ -408,8 +414,9 @@ function onAcuteOrderInput(){
  }
  box.classList.remove('hidden');
 }
-function selectAcuteSuggestion(value){
- acuteOrder.value=value;
+function selectAcuteSuggestion(m){
+ acuteOrder.value=m.value;
+ acuteSelectedMachine={no:m.machineNo||'',name:m.machineName||''};
  hideAcuteSuggest();
 }
 function hideAcuteSuggest(){
@@ -422,7 +429,7 @@ document.getElementById('acuteSuggest').addEventListener('mousedown',e=>{
  if(!item)return;
  e.preventDefault();
  const m=acuteSuggestMatches[parseInt(item.dataset.idx,10)];
- if(m)selectAcuteSuggestion(m.value);
+ if(m)selectAcuteSuggestion(m);
 });
 document.addEventListener('click',e=>{
  if(!e.target.closest('.acwrap'))hideAcuteSuggest();
@@ -435,6 +442,9 @@ function addItem(){
    let o=acuteOrder.value.trim();
    if(!o)return alert('Ange kostnadsställe/order för akututtaget.');
    currentOrder.no=o;
+   currentOrder.machine=acuteSelectedMachine?
+    [acuteSelectedMachine.name,acuteSelectedMachine.no?('('+acuteSelectedMachine.no+')'):''].filter(Boolean).join(' '):
+    (currentOrder.machine||'');
  }
  currentItems.push({article:a,qty:q,remaining:remaining.value,comment:comment.value.trim()});
  article.value='';qty.value=1;remaining.value='';comment.value='';renderPending();
@@ -455,7 +465,7 @@ function register(){
  }
  let d=new Date(),time=d.toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit'});
  currentItems.forEach(x=>{
-  const rec={time,article:x.article,order:currentOrder.no,qty:x.qty,remaining:x.remaining,comment:x.comment||'',user:db.user,shift:db.shift,acute,ts:d.getTime()};
+  const rec={time,article:x.article,order:currentOrder.no,machine:currentOrder.machine||'',qty:x.qty,remaining:x.remaining,comment:x.comment||'',user:db.user,shift:db.shift,acute,ts:d.getTime()};
   if(firebaseEnabled && withdrawalsRef){
    withdrawalsRef.push(rec);
   } else {
@@ -486,9 +496,9 @@ function confirmExport(){
 function closeExportModal(){document.getElementById('exportModal').classList.add('hidden')}
 function exportAndClear(){
  const rows=[
- ['Klockslag','EAMA-nr','Kostnadsställe/order','Antal uttaget','Antal kvar','Kommentar','Signatur'],
+ ['Klockslag','EAMA-nr','Kostnadsställe/order','Maskin','Antal uttaget','Antal kvar','Kommentar','Signatur'],
  ...db.withdrawals.slice().sort((a,b)=>a.order.localeCompare(b.order)||a.time.localeCompare(b.time))
- .map(w=>[w.time,w.article,w.order,w.qty,w.remaining,w.comment||'',w.user])
+ .map(w=>[w.time,w.article,w.order,w.machine||'',w.qty,w.remaining,w.comment||'',w.user])
  ];
  const csv=rows.map(r=>r.map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(';')).join('\n');
  const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
