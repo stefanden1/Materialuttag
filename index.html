@@ -121,6 +121,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 <input id="acuteOrder" placeholder="Sök på maskin eller kostnadsställe…" autocomplete="off" oninput="onAcuteOrderTyped()" onfocus="refreshAcuteSuggestions()">
 <div id="acuteSuggest" class="acsuggest hidden"></div>
 </div>
+<div id="registerStatus" class="small" style="margin-top:2px"></div>
 </div>
 <label>EAMA-nummer</label>
 <div class="row">
@@ -211,9 +212,35 @@ if(firebaseEnabled && db.shift)subscribeShift(db.shift);
 // Läser det befintliga registret som redan finns i Firebase under "register/machines"
 // och "register/costCenters" (fylls på av dig separat, t.ex. från Excel-export).
 // Appen skriver aldrig till detta register – den bara söker i det vid AKUTUTTAG.
+// Registret sparas även lokalt (localStorage) så att hela sökningen funkar offline
+// på telefonen om nätet skulle strula – appen laddar då in senast nedladdade register direkt.
 let registerMachinesList=[];
 let registerCostCentersList=[];
+let registerLastSynced=null;
+let firebaseConnected=null; // null=okänt/ansluter, true=online, false=offline
+const REGISTER_CACHE_KEY='materialuttag_register_cache_v1';
+function loadRegisterCache(){
+ try{
+  const cached=JSON.parse(localStorage.getItem(REGISTER_CACHE_KEY)||'null');
+  if(cached){
+   registerMachinesList=cached.machines||[];
+   registerCostCentersList=cached.costCenters||[];
+   registerLastSynced=cached.ts||null;
+  }
+ }catch(e){}
+}
+function saveRegisterCache(){
+ try{
+  localStorage.setItem(REGISTER_CACHE_KEY,JSON.stringify({machines:registerMachinesList,costCenters:registerCostCentersList,ts:registerLastSynced}));
+ }catch(e){}
+}
+loadRegisterCache();
+updateRegisterStatus();
 if(firebaseEnabled){
+ fbdb.ref('.info/connected').on('value',snap=>{
+  firebaseConnected=snap.val()===true;
+  updateRegisterStatus();
+ });
  fbdb.ref('register/machines').on('value',snap=>{
   const val=snap.val()||{};
   registerMachinesList=Object.keys(val).map(k=>({
@@ -222,7 +249,10 @@ if(firebaseEnabled){
    costCenter:val[k].costCenter||'',
    manufacturer:val[k].manufacturer||''
   }));
+  registerLastSynced=Date.now();
+  saveRegisterCache();
   refreshAcuteSuggestions();
+  updateRegisterStatus();
  });
  fbdb.ref('register/costCenters').on('value',snap=>{
   const val=snap.val()||{};
@@ -230,8 +260,24 @@ if(firebaseEnabled){
    costCenter:val[k].costCenter||'',
    name:val[k].name||''
   }));
+  registerLastSynced=Date.now();
+  saveRegisterCache();
   refreshAcuteSuggestions();
+  updateRegisterStatus();
  });
+}
+function updateRegisterStatus(){
+ const el=document.getElementById('registerStatus');
+ if(!el)return;
+ if(!firebaseEnabled){el.textContent='';return}
+ const count=registerMachinesList.length+registerCostCentersList.length;
+ if(firebaseConnected===true){
+  el.textContent=count?`✅ Register uppdaterat (${count} poster).`:'Väntar på register…';
+ } else if(firebaseConnected===false){
+  el.textContent=count?`📴 Offline – använder lokalt sparat register (${count} poster).`:'📴 Offline – inget register sparat lokalt ännu.';
+ } else {
+  el.textContent=count?`🔄 Ansluter… (${count} poster sparade sedan tidigare).`:'🔄 Ansluter till register…';
+ }
 }
 function searchRegister(q){
  const out=[];
@@ -321,6 +367,7 @@ function openWithdraw(){
  acuteOrder.value=acute?(currentOrder.no||''):'';
  acuteSelectedMachine=null;
  hideAcuteSuggest();
+ updateRegisterStatus();
  article.value='';qty.value=1;remaining.value='';comment.value='';
  stopScanner();
  document.getElementById('scanStatus').textContent='';
