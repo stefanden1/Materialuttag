@@ -268,6 +268,29 @@ function saveRegisterCache(){
  }catch(e){}
 }
 loadRegisterCache();
+
+// ====== TRENDBASERAD ORDNING FÖR "ALLA KST"-LISTAN ======
+// Sparas lokalt på telefonen (inte i Firebase) – räknar hur ofta/senast varje
+// kostnadsställe använts vid ett registrerat uttag, oavsett om det kom från
+// en vald maskin eller ett manuellt inskrivet kostnadsställe. Påverkar ENDAST
+// "Alla KST"-listan – vanlig sökning sorteras aldrig efter trend.
+const KST_USAGE_KEY='materialuttag_kst_usage_v1';
+let kstUsage={};
+function loadKstUsage(){
+ try{ kstUsage=JSON.parse(localStorage.getItem(KST_USAGE_KEY)||'{}'); }catch(e){ kstUsage={}; }
+}
+function saveKstUsage(){
+ try{ localStorage.setItem(KST_USAGE_KEY,JSON.stringify(kstUsage)); }catch(e){}
+}
+function recordKstUsage(kst){
+ if(!kst)return;
+ const entry=kstUsage[kst]||{count:0,lastUsed:0};
+ entry.count+=1;
+ entry.lastUsed=Date.now();
+ kstUsage[kst]=entry;
+ saveKstUsage();
+}
+loadKstUsage();
 updateRegisterStatus();
 if(firebaseEnabled){
  fbdb.ref('.info/connected').on('value',snap=>{
@@ -500,8 +523,13 @@ function refreshAcuteSuggestions(){
 }
 function showAllCostCenters(){
  if(!acute)return;
- const sorted=registerCostCentersList.slice().sort((a,b)=>
-  a.costCenter.localeCompare(b.costCenter,'sv',{numeric:true})||a.name.localeCompare(b.name,'sv'));
+ const usage=kst=>kstUsage[kst]||{count:0,lastUsed:0};
+ const sorted=registerCostCentersList.slice().sort((a,b)=>{
+  const ua=usage(a.costCenter), ub=usage(b.costCenter);
+  if(ub.count!==ua.count)return ub.count-ua.count; // mest använda först
+  if(ub.lastUsed!==ua.lastUsed)return ub.lastUsed-ua.lastUsed; // sedan senast använda
+  return a.costCenter.localeCompare(b.costCenter,'sv',{numeric:true})||a.name.localeCompare(b.name,'sv');
+ });
  const matches=sorted.map(c=>({
   value:c.costCenter,
   label:[c.name,'KST '+c.costCenter].filter(Boolean).join(' · '),
@@ -587,6 +615,7 @@ function register(){
    db.withdrawals.push(rec);
   }
  });
+ recordKstUsage(currentOrder.no);
  currentItems=[];save();show('home');
 }
 function saveShift(){
