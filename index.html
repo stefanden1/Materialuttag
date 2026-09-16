@@ -74,6 +74,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 <div class="card">
 <button class="secondary" onclick="show('shift')">SKIFT / ANVÄNDARE</button>
 <button class="secondary" onclick="confirmExport()">EXPORTERA EXCEL</button>
+<button class="secondary" onclick="openRegisterAdd()">➕ LÄGG TILL I REGISTRET</button>
 </div>
 </main>
 
@@ -118,7 +119,10 @@ label{font-size:13px;font-weight:700;color:#374151}
 <div id="acuteOrderField" class="hidden">
 <label>Kostnadsställe / ordernummer</label>
 <div class="acwrap">
+<div class="row">
 <input id="acuteOrder" placeholder="Sök på maskin eller kostnadsställe…" autocomplete="off" oninput="onAcuteOrderTyped()" onfocus="refreshAcuteSuggestions()">
+<button type="button" class="secondary" style="margin-top:6px;max-width:150px" onclick="showAllCostCenters()">📋 Alla KST</button>
+</div>
 <div id="acuteSuggest" class="acsuggest hidden"></div>
 </div>
 <div id="registerStatus" class="small" style="margin-top:2px"></div>
@@ -139,6 +143,24 @@ label{font-size:13px;font-weight:700;color:#374151}
 <button class="secondary" onclick="addItem()">＋ LÄGG TILL ARTIKEL</button>
 <div id="pending"></div>
 <button class="primary" style="margin-top:10px" onclick="register()">REGISTRERA UTTAG</button>
+</div>
+</section>
+
+<section id="registerAdd" class="hidden">
+<button class="back" onclick="show('home')">← Tillbaka</button>
+<div class="card">
+<h2>Lägg till / uppdatera i registret</h2>
+<p class="small">Sparas direkt till rätt plats i Firebase (register/…) utan att röra dagens uttag eller arbetsorder – till skillnad från att importera en hel JSON-fil i Firebase-konsolen.</p>
+<label>Maskinnummer <span class="small">(lämna tomt om det bara är ett kostnadsställe utan egen maskin)</span></label>
+<input id="regMachineNo" placeholder="t.ex. 46320">
+<label>Namn / beskrivning</label>
+<input id="regName" placeholder="t.ex. Ny svetsrobot">
+<label>Kostnadsställe <span class="small">(frivilligt om maskinnummer är ifyllt)</span></label>
+<input id="regCostCenter" placeholder="t.ex. 5340">
+<label>Tillverkare <span class="small">(frivilligt)</span></label>
+<input id="regManufacturer" placeholder="t.ex. ABB">
+<button class="primary" onclick="addRegisterEntry()">LÄGG TILL I REGISTRET</button>
+<p class="small" id="regAddStatus" style="margin-top:8px"></p>
 </div>
 </section>
 
@@ -446,20 +468,37 @@ function onAcuteOrderTyped(){
  acuteSelectedMachine=null; // manuell redigering ogiltigförklarar tidigare val
  refreshAcuteSuggestions();
 }
+function renderAcuteSuggestBox(matches,emptyMessage){
+ acuteSuggestMatches=matches;
+ const box=document.getElementById('acuteSuggest');
+ if(!matches.length){
+  box.innerHTML=`<div class="acnone">${emptyMessage}</div>`;
+ } else {
+  box.innerHTML=matches.map((m,i)=>
+   `<div class="aci" data-idx="${i}"><b>${esc(m.value)}</b>${m.label?`<span>${esc(m.label)}</span>`:''}</div>`
+  ).join('');
+ }
+ box.classList.remove('hidden');
+}
 function refreshAcuteSuggestions(){
  if(!acute)return;
  const box=document.getElementById('acuteSuggest');
  const q=acuteOrder.value.trim().toLowerCase();
  if(!q){box.classList.add('hidden');box.innerHTML='';acuteSuggestMatches=[];return}
- acuteSuggestMatches=searchRegister(q).slice(0,8);
- if(!acuteSuggestMatches.length){
-  box.innerHTML='<div class="acnone">Inga träffar i registret.</div>';
- } else {
-  box.innerHTML=acuteSuggestMatches.map((m,i)=>
-   `<div class="aci" data-idx="${i}"><b>${esc(m.value)}</b>${m.label?`<span>${esc(m.label)}</span>`:''}</div>`
-  ).join('');
- }
- box.classList.remove('hidden');
+ renderAcuteSuggestBox(searchRegister(q).slice(0,8),'Inga träffar i registret.');
+}
+function showAllCostCenters(){
+ if(!acute)return;
+ const sorted=registerCostCentersList.slice().sort((a,b)=>
+  a.costCenter.localeCompare(b.costCenter,'sv',{numeric:true})||a.name.localeCompare(b.name,'sv'));
+ const matches=sorted.map(c=>({
+  value:c.costCenter,
+  label:[c.name,'KST '+c.costCenter].filter(Boolean).join(' · '),
+  machineNo:'',
+  machineName:c.name
+ }));
+ renderAcuteSuggestBox(matches,'Inga kostnadsställen i registret.');
+ acuteOrder.focus();
 }
 function selectAcuteSuggestion(m){
  acuteOrder.value=m.value;
@@ -558,6 +597,41 @@ function backFromShift(){
 function confirmExport(){
  if(!db.withdrawals.length)return alert('Inga uttag att exportera.');
  document.getElementById('exportModal').classList.remove('hidden');
+}
+// ====== LÄGG TILL / UPPDATERA I REGISTRET (direkt till register/…, rör inte resten av databasen) ======
+function fbKey(s){return String(s).trim().replace(/[.#$/\[\]]/g,'_')}
+function openRegisterAdd(){
+ regMachineNo.value='';regName.value='';regCostCenter.value='';regManufacturer.value='';
+ document.getElementById('regAddStatus').textContent='';
+ show('registerAdd');
+}
+function addRegisterEntry(){
+ const status=document.getElementById('regAddStatus');
+ status.textContent='';
+ if(!firebaseEnabled){alert('Synk mot Firebase är inte konfigurerad – kan inte spara till registret.');return;}
+ const no=regMachineNo.value.trim();
+ const name=regName.value.trim();
+ const kst=regCostCenter.value.trim();
+ const manuf=regManufacturer.value.trim();
+ if(!name)return alert('Ange namn/beskrivning.');
+ if(!no && !kst)return alert('Ange antingen maskinnummer eller kostnadsställe.');
+ if(no){
+  const key=fbKey(no);
+  fbdb.ref('register/machines/'+key).set({machineNo:no,name,costCenter:kst,department:'',manufacturer:manuf})
+   .then(()=>{
+    status.textContent=`✅ ${name} (${no}) sparad i registret.`;
+    regMachineNo.value='';regName.value='';regCostCenter.value='';regManufacturer.value='';
+   })
+   .catch(err=>{status.textContent='❌ Kunde inte spara: '+err.message;});
+ } else {
+  const key=fbKey(kst)+'_'+Date.now();
+  fbdb.ref('register/costCenters/'+key).set({costCenter:kst,name,department:''})
+   .then(()=>{
+    status.textContent=`✅ "${name}" sparad på kostnadsställe ${kst}.`;
+    regMachineNo.value='';regName.value='';regCostCenter.value='';regManufacturer.value='';
+   })
+   .catch(err=>{status.textContent='❌ Kunde inte spara: '+err.message;});
+ }
 }
 function closeExportModal(){document.getElementById('exportModal').classList.add('hidden')}
 function exportAndClear(){
