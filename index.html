@@ -74,7 +74,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 <div class="card">
 <button class="secondary" onclick="show('shift')">SKIFT / ANVÄNDARE</button>
 <button class="secondary" onclick="confirmExport()">EXPORTERA EXCEL</button>
-<button class="secondary" onclick="openRegisterAdd()">➕ LÄGG TILL I REGISTRET</button>
+<button class="secondary" onclick="openRegisterAdd()">＋ LÄGG TILL I REGISTRET</button>
 </div>
 </main>
 
@@ -498,7 +498,6 @@ function showAllCostCenters(){
   machineName:c.name
  }));
  renderAcuteSuggestBox(matches,'Inga kostnadsställen i registret.');
- acuteOrder.focus();
 }
 function selectAcuteSuggestion(m){
  acuteOrder.value=m.value;
