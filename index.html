@@ -687,7 +687,7 @@ function exportAndClear(){
  const rows=[
  ['Klockslag','EAMA-nr','Kostnadsställe/order','Maskin','Antal uttaget','Antal kvar','Kommentar','Signatur'],
  ...db.withdrawals.slice().sort((a,b)=>a.order.localeCompare(b.order)||a.time.localeCompare(b.time))
- .map(w=>[w.time,w.article,w.order,w.machine||'',w.qty,w.remaining,w.comment||'',w.user])
+ .map(w=>[w.time,w.article'',w.order,w.machine||'',w.qty,w.remaining,w.comment||'',w.user])
  ];
  const csv=rows.map(r=>r.map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(';')).join('\n');
  const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
