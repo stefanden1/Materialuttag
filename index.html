@@ -448,11 +448,14 @@ function startScanner(){
  qrScanner=new Html5Qrcode('qr-reader',{verbose:false});
 
  const qrboxFn=function(viewfinderWidth,viewfinderHeight){
-   // Låt scan-rutan täcka 85% av kortaste sidan istället för ett litet fast fönster,
-   // så koden behöver inte träffas lika exakt/nära.
-   const edge=Math.floor(Math.min(viewfinderWidth,viewfinderHeight)*0.85);
-   return {width:edge,height:edge};
+   // Täck nästan hela bildfältet (90% i båda led) istället för en liten fyrkant i mitten,
+   // så en kod som ligger snett åt sidan också hittas – ungefär som mobilens vanliga kameraapp.
+   const w=Math.floor(viewfinderWidth*0.9);
+   const h=Math.floor(viewfinderHeight*0.9);
+   return {width:w,height:h};
  };
+ const formatsToSupport=(typeof Html5QrcodeSupportedFormats!=='undefined')?
+   [Html5QrcodeSupportedFormats.QR_CODE]:undefined;
  function onScan(decodedText){
    article.value=decodedText.trim().toUpperCase();
    status.textContent='QR-kod läst.';
@@ -463,27 +466,34 @@ function startScanner(){
    qrScanner=null;
    box.classList.add('hidden');
  }
+ function afterStart(){
+   // Be kameran fokusera kontinuerligt istället för en gång vid start – annars krävs
+   // ofta exakt rätt avstånd för att bilden ska bli skarp nog att läsas.
+   qrScanner.applyVideoConstraints({advanced:[{focusMode:'continuous'}]}).catch(()=>{});
+ }
 
- // Försök 1: högre upplösning + telefonens ev. inbyggda (native) QR-avläsare
+ // Försök 1: högre upplösning + telefonens ev. inbyggda (native) QR-avläsare + kontinuerligt fokus
  qrScanner.start(
    { facingMode:'environment' },
    {
      fps:12,
      qrbox:qrboxFn,
-     videoConstraints:{ facingMode:'environment', width:{ideal:1920}, height:{ideal:1080} },
+     videoConstraints:{ facingMode:'environment', width:{ideal:1920}, height:{ideal:1080}, focusMode:'continuous' },
+     formatsToSupport,
      // Använd telefonens inbyggda, snabbare QR-avläsare där den finns (nyare Android/Chrome, Safari 17+)
+     useBarCodeDetectorIfSupported:true,
      experimentalFeatures:{useBarCodeDetectorIfSupported:true}
    },
    onScan,
    ()=>{}
- ).catch(()=>{
+ ).then(afterStart).catch(()=>{
    // Försök 2: enklare/mer kompatibla inställningar om enheten inte gillade ovanstående
    qrScanner.start(
      { facingMode:'environment' },
-     { fps:10, qrbox:qrboxFn },
+     { fps:10, qrbox:qrboxFn, videoConstraints:{facingMode:'environment',focusMode:'continuous'}, formatsToSupport },
      onScan,
      ()=>{}
-   ).catch(giveUp);
+   ).then(afterStart).catch(giveUp);
  });
 }
 function stopScanner(){
