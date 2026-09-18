@@ -68,7 +68,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 <div class="card">
 <b>Uttag med arbetsorder</b>
 <div id="orders"></div>
-<button class="secondary" onclick="show('newOrder')">＋ LÄGG TILL NY ARBETSORDER</button>
+<button class="secondary" onclick="show('newOrder')">LÄGG TILL ARBETSORDER</button>
 </div>
 
 <div class="card">
@@ -103,7 +103,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 <label>Ordernummer / kostnadsställe</label>
 <input id="orderNo" placeholder="t.ex. 123456">
 <label>Maskin / beskrivning (valfritt)</label>
-<input id="machine" placeholder="t.ex. 46316 eller 5340">
+<input id="machine" placeholder="t.ex. 46314 eller Pama">
 <button class="primary" onclick="addOrder()">SKAPA ARBETSORDER</button>
 </div>
 </section>
@@ -140,7 +140,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 <h2 id="withdrawTitle">Materialuttag</h2>
 <div id="selectedOrder" class="success"></div>
 <div id="acuteOrderField" class="hidden">
-<label>Kostnadsställe / ordernummer</label>
+<label>Kostnadsställe / maskinnr</label>
 <div class="acwrap">
 <div class="row">
 <input id="acuteOrder" placeholder="Sök på maskin eller kostnadsställe…" autocomplete="off" oninput="onAcuteOrderTyped()" onfocus="refreshAcuteSuggestions()">
@@ -253,7 +253,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 <button class="back" onclick="show('list')">← Tillbaka</button>
 <div class="card">
 <h2>Justera uttag</h2>
-<label>Kostnadsställe / ordernummer</label>
+<label>Kostnadsställe / maskinnr</label>
 <input id="ewOrder" disabled>
 <label>EAMA-nummer</label>
 <input id="ewArticle" disabled>
