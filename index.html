@@ -200,27 +200,27 @@ label{font-size:13px;font-weight:700;color:#374151}
 <button class="back" onclick="show('settings')">← Tillbaka</button>
 <div class="card">
 <h2>Ändra maskindata</h2>
-<p class="small">Sök upp en befintlig maskin för att ändra dess uppgifter, eller fyll i fälten manuellt för att lägga till en ny maskin. Kostnadsställen kan inte ändras eller läggas till här.</p>
+<p class="small">Sök upp och välj en befintlig maskin för att ändra dess uppgifter. Nya maskiner går inte att skapa här – det gör du via "Lägg till i register".</p>
 <label>Sök maskin</label>
 <div class="acwrap">
 <input id="regEditSearch" placeholder="t.ex. Pegard 1…" autocomplete="off" oninput="onRegEditSearchTyped()" onfocus="refreshRegEditSuggestions()">
 <div id="regEditSuggest" class="acsuggest hidden"></div>
 </div>
 <label>Maskinnummer</label>
-<input id="regEditMachineNo" placeholder="t.ex. 46320">
+<input id="regEditMachineNo" placeholder="Sök och välj en maskin ovan" disabled>
 <label>Namn / beskrivning</label>
-<input id="regEditName" placeholder="t.ex. Ny svetsrobot">
+<input id="regEditName" placeholder="t.ex. Ny svetsrobot" disabled>
 <label>Kostnadsställe <span class="small">(endast de som redan finns i registret)</span></label>
 <div class="acwrap">
 <div class="row">
-<input id="regEditCostCenter" placeholder="Välj från registret…" readonly>
-<button type="button" class="secondary" style="margin-top:0;max-width:150px" onclick="showRegEditAllKst()">Alla KST</button>
+<input id="regEditCostCenter" placeholder="Välj från registret…" readonly disabled>
+<button type="button" id="regEditKstBtn" class="secondary" style="margin-top:0;max-width:150px" onclick="showRegEditAllKst()" disabled>Alla KST</button>
 </div>
 <div id="regEditKstSuggest" class="acsuggest hidden"></div>
 </div>
 <label>Tillverkare <span class="small">(frivilligt)</span></label>
-<input id="regEditManufacturer" placeholder="t.ex. ABB">
-<button class="primary" onclick="saveRegisterEdit()">SPARA ÄNDRING</button>
+<input id="regEditManufacturer" placeholder="t.ex. ABB" disabled>
+<button class="primary" id="regEditSaveBtn" onclick="saveRegisterEdit()" disabled>SPARA ÄNDRING</button>
 <p class="small" id="regEditStatus" style="margin-top:8px"></p>
 </div>
 </section>
@@ -512,34 +512,37 @@ function removeWithdrawal(i){
  save();
 }
 // ====== JUSTERA UTTAG (antal/enhet/antal kvar/kommentar i efterhand) ======
-let editWithdrawalIndex=null;
+let editWithdrawalId=null; // Firebase-nyckeln för posten – används istället för listindex
+let editWithdrawalLocalIndex=null; // fallback endast i lokalt läge utan Firebase-synk
 function openEditWithdrawal(i){
- editWithdrawalIndex=i;
  const w=db.withdrawals[i];
+ editWithdrawalId=w.id||null;
+ editWithdrawalLocalIndex=i;
  ewOrder.value=w.order;
  ewArticle.value=w.article;
  ewQty.value=w.qty;
  ewUnit.value=w.unit||'St';
- ewRemaining.value=w.remaining;
+ ewRemaining.value=w.remaining||'';
  ewComment.value=w.comment||'';
  document.getElementById('ewStatus').textContent='';
  show('editWithdrawal');
 }
 function saveEditWithdrawal(){
- if(editWithdrawalIndex===null)return;
- const w=db.withdrawals[editWithdrawalIndex];
  const q=parseInt(ewQty.value,10);
  if(!q)return alert('Ange ett giltigt antal.');
  const unit=ewUnit.value||'St';
  const remaining=ewRemaining.value;
  const comment=ewComment.value.trim();
  const status=document.getElementById('ewStatus');
- if(firebaseEnabled && db.shift && w.id){
-  fbdb.ref('shifts/'+db.shift+'/withdrawals/'+w.id).update({qty:q,unit,remaining,comment})
+ if(firebaseEnabled && db.shift && editWithdrawalId){
+  // Skriver till posten via dess egen nyckel, så rätt post träffas även om
+  // listan hunnit ändras (nya/borttagna uttag från andra) medan vyn var öppen.
+  fbdb.ref('shifts/'+db.shift+'/withdrawals/'+editWithdrawalId).update({qty:q,unit,remaining,comment})
    .then(()=>{show('list');})
    .catch(err=>{status.textContent='❌ Kunde inte spara: '+err.message;});
- } else {
-  db.withdrawals[editWithdrawalIndex]={...w,qty:q,unit,remaining,comment};
+ } else if(editWithdrawalLocalIndex!==null && db.withdrawals[editWithdrawalLocalIndex]){
+  const w=db.withdrawals[editWithdrawalLocalIndex];
+  db.withdrawals[editWithdrawalLocalIndex]={...w,qty:q,unit,remaining,comment};
   save();
   show('list');
  }
@@ -843,21 +846,34 @@ function addRegisterEntry(){
 
 // ====== ÄNDRA I REGISTRET (sök upp befintlig post, autofyll, redigera och spara tillbaka) ======
 let regEditOriginalKey=null;
-let regEditOriginalType=null; // 'machine' | 'costCenter' | null (null = ingen post vald, dvs ny post)
+let regEditOriginalType=null; // 'machine' | null (null = ingen post vald – går inte att spara)
 let regEditSearchMatches=[];
 let regEditKstMatches=[];
 
+function setRegEditFieldsEnabled(enabled){
+ regEditMachineNo.disabled=!enabled;
+ regEditName.disabled=!enabled;
+ regEditCostCenter.disabled=!enabled;
+ regEditManufacturer.disabled=!enabled;
+ regEditKstBtn.disabled=!enabled;
+ regEditSaveBtn.disabled=!enabled;
+}
 function openRegisterEdit(){
  regEditSearch.value='';
  regEditMachineNo.value='';regEditName.value='';regEditCostCenter.value='';regEditManufacturer.value='';
  regEditOriginalKey=null;regEditOriginalType=null;
+ setRegEditFieldsEnabled(false);
  document.getElementById('regEditStatus').textContent='';
  hideRegEditSuggest();
  hideRegEditKstSuggest();
  show('registerEdit');
 }
 function onRegEditSearchTyped(){
- regEditOriginalKey=null;regEditOriginalType=null; // manuell redigering av sökfältet ogiltigförklarar vald post
+ // Manuell redigering av sökfältet ogiltigförklarar vald post – man kan alltså
+ // aldrig fylla i fälten "nedifrån" utan att först ha sökt upp en befintlig maskin.
+ regEditOriginalKey=null;regEditOriginalType=null;
+ regEditMachineNo.value='';regEditName.value='';regEditCostCenter.value='';regEditManufacturer.value='';
+ setRegEditFieldsEnabled(false);
  refreshRegEditSuggestions();
 }
 function refreshRegEditSuggestions(){
@@ -882,6 +898,7 @@ function selectRegEditMatch(m){
  regEditSearch.value=m.machineNo||m.costCenter||'';
  regEditOriginalKey=m.key||null;
  regEditOriginalType=m.type||null;
+ setRegEditFieldsEnabled(true);
  document.getElementById('regEditStatus').textContent='';
  hideRegEditSuggest();
 }
@@ -927,14 +944,17 @@ function saveRegisterEdit(){
  const status=document.getElementById('regEditStatus');
  status.textContent='';
  if(!firebaseEnabled){alert('Synk mot Firebase är inte konfigurerad – kan inte spara till registret.');return;}
+ if(!(regEditOriginalType==='machine' && regEditOriginalKey)){
+  alert('Sök upp och välj en befintlig maskin innan du kan spara ändringar. Nya maskiner lägger du till via "Lägg till i register".');
+  return;
+ }
  const no=regEditMachineNo.value.trim();
  const name=regEditName.value.trim();
  const kst=regEditCostCenter.value.trim();
  const manuf=regEditManufacturer.value.trim();
  if(!name)return alert('Ange namn/beskrivning.');
  if(!no)return alert('Ange maskinnummer.');
- const key=(regEditOriginalType==='machine' && regEditOriginalKey)?regEditOriginalKey:fbKey(no);
- fbdb.ref('register/machines/'+key).set({machineNo:no,name,costCenter:kst,department:'',manufacturer:manuf})
+ fbdb.ref('register/machines/'+regEditOriginalKey).set({machineNo:no,name,costCenter:kst,department:'',manufacturer:manuf})
   .then(()=>{status.textContent=`✅ ${name} (${no}) sparad i registret.`;})
   .catch(err=>{status.textContent='❌ Kunde inte spara: '+err.message;});
 }
@@ -1060,7 +1080,7 @@ function exportAllShifts(){
   if(!all.length){alert('Inga uttag att exportera för något skift.');return;}
   buildAndDownloadXlsx(all,'materialuttag_alla_skift.xlsx');
   closeExportModal();
-  if(!confirm('Filen med alla skiftens uttag är nedladdad.\n\nDenna funktion är endast till för den som hämtar den kompletta listan – bekräfta bara "OK" när filen är säkert sparad. Detta raderar ALLA skiftens uttags- och arbetsorderhistorik (4A, 4B, 4C, 4D, Dagtid) och går inte att ångra.\n\nRensa alla skiftens historik nu?')){
+  if(!confirm(`Filen med alla skiftens uttag är nedladdad.\n\nDenna funktion är endast till för den som hämtar den kompletta listan – bekräfta bara "OK" när filen är säkert sparad. Detta raderar ALLA skiftens uttags- och arbetsorderhistorik (${ALL_SHIFT_CODES.join(', ')}) och går inte att ångra.\n\nRensa alla skiftens historik nu?`)){
    return;
   }
   Promise.all(ALL_SHIFT_CODES.map(code=>Promise.all([
