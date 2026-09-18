@@ -86,7 +86,8 @@ label{font-size:13px;font-weight:700;color:#374151}
 <h2>Inställningar</h2>
 <button class="secondary" onclick="pendingReturn='settings';show('shift')">SKIFT / ANVÄNDARE</button>
 <button class="secondary" onclick="openRegisterAdd()">＋ LÄGG TILL I REGISTRET</button>
-<button class="secondary" onclick="openRegisterEdit()">🔧 ÄNDRA I REGISTRET</button>
+<button class="secondary" onclick="openRegisterEdit()">ÄNDRA MASKINDATA</button>
+<button class="secondary" onclick="openRegisterRemove()">TA BORT UR REGISTRET</button>
 </div>
 </section>
 
@@ -133,7 +134,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 <div class="acwrap">
 <div class="row">
 <input id="acuteOrder" placeholder="Sök på maskin eller kostnadsställe…" autocomplete="off" oninput="onAcuteOrderTyped()" onfocus="refreshAcuteSuggestions()">
-<button type="button" class="secondary" style="margin-top:6px;max-width:150px" onclick="showAllCostCenters()">📋 Alla KST</button>
+<button type="button" class="secondary" style="margin-top:6px;max-width:150px" onclick="showAllCostCenters()">Alla KST</button>
 </div>
 <div id="acuteSuggest" class="acsuggest hidden"></div>
 </div>
@@ -141,11 +142,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 </div>
 <label>EAMA-nummer</label>
 <input id="article" placeholder="Skriv siffror – EAMA läggs till automatiskt" autocomplete="off" oninput="onArticleInput()">
-<div class="row">
-<button type="button" class="secondary" style="margin-top:0" onclick="startScanner()">📷 Skanna (live)</button>
-<button type="button" class="secondary" style="margin-top:0" onclick="pickPhotoForScan()">🖼️ Ta foto istället</button>
-</div>
-<input type="file" id="qrPhotoInput" accept="image/*" capture="environment" class="hidden" onchange="onQrPhotoPicked(event)">
+<button type="button" class="secondary" onclick="startScanner()">Skanna QR</button>
 <div id="qr-reader" class="hidden"></div>
 <div id="scanStatus" class="small"></div>
 <label>Antal uttaget</label>
@@ -190,14 +187,14 @@ label{font-size:13px;font-weight:700;color:#374151}
 <section id="registerEdit" class="hidden">
 <button class="back" onclick="show('settings')">← Tillbaka</button>
 <div class="card">
-<h2>Ändra i registret</h2>
-<p class="small">Sök upp en befintlig maskin eller kostnadsställe för att ändra dess uppgifter, eller fyll i fälten manuellt för att lägga till en ny post.</p>
-<label>Sök maskin eller kostnadsställe</label>
+<h2>Ändra maskindata</h2>
+<p class="small">Sök upp en befintlig maskin för att ändra dess uppgifter, eller fyll i fälten manuellt för att lägga till en ny maskin. Kostnadsställen kan inte ändras eller läggas till här.</p>
+<label>Sök maskin</label>
 <div class="acwrap">
 <input id="regEditSearch" placeholder="t.ex. Pegard 1…" autocomplete="off" oninput="onRegEditSearchTyped()" onfocus="refreshRegEditSuggestions()">
 <div id="regEditSuggest" class="acsuggest hidden"></div>
 </div>
-<label>Maskinnummer <span class="small">(lämna tomt om det bara är ett kostnadsställe utan egen maskin)</span></label>
+<label>Maskinnummer</label>
 <input id="regEditMachineNo" placeholder="t.ex. 46320">
 <label>Namn / beskrivning</label>
 <input id="regEditName" placeholder="t.ex. Ny svetsrobot">
@@ -205,7 +202,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 <div class="acwrap">
 <div class="row">
 <input id="regEditCostCenter" placeholder="Välj från registret…" readonly>
-<button type="button" class="secondary" style="margin-top:0;max-width:150px" onclick="showRegEditAllKst()">📋 Alla KST</button>
+<button type="button" class="secondary" style="margin-top:0;max-width:150px" onclick="showRegEditAllKst()">Alla KST</button>
 </div>
 <div id="regEditKstSuggest" class="acsuggest hidden"></div>
 </div>
@@ -213,6 +210,22 @@ label{font-size:13px;font-weight:700;color:#374151}
 <input id="regEditManufacturer" placeholder="t.ex. ABB">
 <button class="primary" onclick="saveRegisterEdit()">SPARA ÄNDRING</button>
 <p class="small" id="regEditStatus" style="margin-top:8px"></p>
+</div>
+</section>
+
+<section id="registerRemove" class="hidden">
+<button class="back" onclick="show('settings')">← Tillbaka</button>
+<div class="card">
+<h2>Ta bort ur registret</h2>
+<p class="small">Sök upp en maskin eller ett kostnadsställe och ta bort det ur registret. Går inte att ångra.</p>
+<label>Sök maskin eller kostnadsställe</label>
+<div class="acwrap">
+<input id="regRemoveSearch" placeholder="Sök…" autocomplete="off" oninput="onRegRemoveSearchTyped()" onfocus="refreshRegRemoveSuggestions()">
+<div id="regRemoveSuggest" class="acsuggest hidden"></div>
+</div>
+<div id="regRemoveSelected" class="success hidden"></div>
+<button class="danger" id="regRemoveBtn" onclick="confirmRemoveRegisterEntry()" disabled>TA BORT UR REGISTRET</button>
+<p class="small" id="regRemoveStatus" style="margin-top:8px"></p>
 </div>
 </section>
 
@@ -565,33 +578,6 @@ function stopScanner(){
  if(box)box.classList.add('hidden');
 }
 
-// ====== "TA FOTO ISTÄLLET" – använder telefonens vanliga kameraapp (med dess
-// riktiga autofokus/zoom) för själva fotograferingen, och läser sedan av
-// QR-koden ur den tagna bilden. Fungerar mycket bättre på långt håll/vinkel
-// än den direkta livekameran i webbläsaren, eftersom fotot redan är skarpt
-// och rättvinklat när det kommer in till avläsningen.
-function pickPhotoForScan(){
- stopScanner();
- document.getElementById('scanStatus').textContent='';
- document.getElementById('qrPhotoInput').click();
-}
-function onQrPhotoPicked(e){
- const file=e.target.files && e.target.files[0];
- e.target.value=''; // så samma foto går att välja igen om det behövs
- if(!file)return;
- const status=document.getElementById('scanStatus');
- status.textContent='Läser bilden…';
- const photoScanner=new Html5Qrcode('qr-reader',{verbose:false});
- photoScanner.scanFile(file,false)
-  .then(decodedText=>{
-   article.value=decodedText.trim().toUpperCase();
-   status.textContent='✅ QR-kod läst från foto.';
-  })
-  .catch(()=>{
-   status.textContent='Hittade ingen läsbar QR-kod i bilden. Prova igen – gärna med koden mitt i bilden och bra ljus.';
-  });
-}
-
 // ====== SÖK/AUTOCOMPLETE FÖR AKUTUTTAG (maskin eller kostnadsställe) ======
 let acuteSuggestMatches=[];
 let acuteSelectedMachine=null; // {no,name} från vald registerträff, för bakåtspårning
@@ -657,6 +643,7 @@ document.addEventListener('click',e=>{
   hideAcuteSuggest();
   hideRegEditSuggest();
   hideRegEditKstSuggest();
+  hideRegRemoveSuggest();
  }
 });
 
@@ -797,12 +784,12 @@ function refreshRegEditSuggestions(){
  const box=document.getElementById('regEditSuggest');
  const q=regEditSearch.value.trim().toLowerCase();
  if(!q){box.classList.add('hidden');box.innerHTML='';regEditSearchMatches=[];return}
- regEditSearchMatches=searchRegisterFull(q).slice(0,8);
+ regEditSearchMatches=searchRegisterFull(q).filter(m=>m.type==='machine').slice(0,8);
  if(!regEditSearchMatches.length){
-  box.innerHTML='<div class="acnone">Inga träffar i registret.</div>';
+  box.innerHTML='<div class="acnone">Inga maskiner hittades.</div>';
  } else {
   box.innerHTML=regEditSearchMatches.map((m,i)=>
-   `<div class="aci" data-idx="${i}"><b>${esc(m.machineNo||m.costCenter)}</b><span>${esc(m.label)}</span></div>`
+   `<div class="aci" data-idx="${i}"><b>${esc(m.machineNo)}</b><span>${esc(m.label)}</span></div>`
   ).join('');
  }
  box.classList.remove('hidden');
@@ -865,28 +852,84 @@ function saveRegisterEdit(){
  const kst=regEditCostCenter.value.trim();
  const manuf=regEditManufacturer.value.trim();
  if(!name)return alert('Ange namn/beskrivning.');
- if(!no && !kst)return alert('Ange antingen maskinnummer eller kostnadsställe.');
- if(regEditOriginalType==='machine' && regEditOriginalKey){
-  // Uppdaterar EXAKT den post som söktes fram, oavsett vad maskinnumret ändras till
-  fbdb.ref('register/machines/'+regEditOriginalKey).set({machineNo:no,name,costCenter:kst,department:'',manufacturer:manuf})
-   .then(()=>{status.textContent=`✅ ${name} (${no||regEditOriginalKey}) uppdaterad i registret.`;})
-   .catch(err=>{status.textContent='❌ Kunde inte spara: '+err.message;});
- } else if(regEditOriginalType==='costCenter' && regEditOriginalKey){
-  fbdb.ref('register/costCenters/'+regEditOriginalKey).set({costCenter:kst,name,department:''})
-   .then(()=>{status.textContent=`✅ "${name}" uppdaterad på kostnadsställe ${kst}.`;})
-   .catch(err=>{status.textContent='❌ Kunde inte spara: '+err.message;});
- } else if(no){
-  // Ingen post vald i sökningen – lägg till som en ny maskin
-  const key=fbKey(no);
-  fbdb.ref('register/machines/'+key).set({machineNo:no,name,costCenter:kst,department:'',manufacturer:manuf})
-   .then(()=>{status.textContent=`✅ ${name} (${no}) sparad som ny post i registret.`;})
-   .catch(err=>{status.textContent='❌ Kunde inte spara: '+err.message;});
+ if(!no)return alert('Ange maskinnummer.');
+ const key=(regEditOriginalType==='machine' && regEditOriginalKey)?regEditOriginalKey:fbKey(no);
+ fbdb.ref('register/machines/'+key).set({machineNo:no,name,costCenter:kst,department:'',manufacturer:manuf})
+  .then(()=>{status.textContent=`✅ ${name} (${no}) sparad i registret.`;})
+  .catch(err=>{status.textContent='❌ Kunde inte spara: '+err.message;});
+}
+
+// ====== TA BORT UR REGISTRET (sök upp maskin ELLER kostnadsställe, ta bort efter bekräftelse) ======
+let regRemoveSearchMatches=[];
+let regRemoveSelectedItem=null; // {type,key,label,machineNo,costCenter}
+
+function openRegisterRemove(){
+ regRemoveSearch.value='';
+ regRemoveSelectedItem=null;
+ document.getElementById('regRemoveSelected').classList.add('hidden');
+ document.getElementById('regRemoveSelected').innerHTML='';
+ document.getElementById('regRemoveStatus').textContent='';
+ regRemoveBtn.disabled=true;
+ hideRegRemoveSuggest();
+ show('registerRemove');
+}
+function onRegRemoveSearchTyped(){
+ regRemoveSelectedItem=null;
+ document.getElementById('regRemoveSelected').classList.add('hidden');
+ regRemoveBtn.disabled=true;
+ refreshRegRemoveSuggestions();
+}
+function refreshRegRemoveSuggestions(){
+ const box=document.getElementById('regRemoveSuggest');
+ const q=regRemoveSearch.value.trim().toLowerCase();
+ if(!q){box.classList.add('hidden');box.innerHTML='';regRemoveSearchMatches=[];return}
+ regRemoveSearchMatches=searchRegisterFull(q).slice(0,8);
+ if(!regRemoveSearchMatches.length){
+  box.innerHTML='<div class="acnone">Inga träffar i registret.</div>';
  } else {
-  const key=fbKey(kst)+'_'+Date.now();
-  fbdb.ref('register/costCenters/'+key).set({costCenter:kst,name,department:''})
-   .then(()=>{status.textContent=`✅ "${name}" sparad som ny post på kostnadsställe ${kst}.`;})
-   .catch(err=>{status.textContent='❌ Kunde inte spara: '+err.message;});
+  box.innerHTML=regRemoveSearchMatches.map((m,i)=>
+   `<div class="aci" data-idx="${i}"><b>${esc(m.machineNo||m.costCenter)}</b><span>${esc(m.label)}</span></div>`
+  ).join('');
  }
+ box.classList.remove('hidden');
+}
+function selectRegRemoveMatch(m){
+ regRemoveSelectedItem=m;
+ const sel=document.getElementById('regRemoveSelected');
+ sel.innerHTML=`<b>${esc(m.machineNo||m.costCenter)}</b> – ${esc(m.label)}`;
+ sel.classList.remove('hidden');
+ regRemoveBtn.disabled=false;
+ document.getElementById('regRemoveStatus').textContent='';
+ hideRegRemoveSuggest();
+}
+function hideRegRemoveSuggest(){
+ const box=document.getElementById('regRemoveSuggest');
+ if(box){box.classList.add('hidden');box.innerHTML='';}
+ regRemoveSearchMatches=[];
+}
+document.getElementById('regRemoveSuggest').addEventListener('mousedown',e=>{
+ const item=e.target.closest('.aci');
+ if(!item)return;
+ e.preventDefault();
+ const m=regRemoveSearchMatches[parseInt(item.dataset.idx,10)];
+ if(m)selectRegRemoveMatch(m);
+});
+function confirmRemoveRegisterEntry(){
+ if(!regRemoveSelectedItem)return;
+ if(!firebaseEnabled){alert('Synk mot Firebase är inte konfigurerad – kan inte ta bort från registret.');return;}
+ const m=regRemoveSelectedItem;
+ const label=`${m.machineNo||m.costCenter} – ${m.label}`;
+ if(!confirm(`Vill du ta bort "${label}" ur registret? Det går inte att ångra.`))return;
+ const path=m.type==='machine'?('register/machines/'+m.key):('register/costCenters/'+m.key);
+ fbdb.ref(path).remove()
+  .then(()=>{
+   document.getElementById('regRemoveStatus').textContent='✅ Borttagen ur registret.';
+   regRemoveSelectedItem=null;
+   document.getElementById('regRemoveSelected').classList.add('hidden');
+   regRemoveBtn.disabled=true;
+   regRemoveSearch.value='';
+  })
+  .catch(err=>{document.getElementById('regRemoveStatus').textContent='❌ Kunde inte ta bort: '+err.message;});
 }
 
 function closeExportModal(){document.getElementById('exportModal').classList.add('hidden')}
