@@ -116,6 +116,11 @@ label{font-size:13px;font-weight:700;color:#374151}
 <label>Skift</label>
 <select id="shiftCode">
 <option value="">Välj skift</option>
+<option value="2A">2A</option>
+<option value="2B">2B</option>
+<option value="3A">3A</option>
+<option value="3B">3B</option>
+<option value="3C">3C</option>
 <option value="4A">4A</option>
 <option value="4B">4B</option>
 <option value="4C">4C</option>
@@ -1008,7 +1013,7 @@ function confirmRemoveRegisterEntry(){
 }
 
 function closeExportModal(){document.getElementById('exportModal').classList.add('hidden')}
-const ALL_SHIFT_CODES=['4A','4B','4C','4D','Dagtid'];
+const ALL_SHIFT_CODES=['2A','2B','3A','3B','3C','4A','4B','4C','4D','Dagtid'];
 function buildAndDownloadXlsx(list,filename){
  const header=['Skift','Klockslag','EAMA-nr','Kostnadsställe/order','Maskin','Antal uttaget','Enhet','Antal kvar','Kommentar','Signatur'];
  const sorted=list.slice().sort((a,b)=>(a.shift||'').localeCompare(b.shift||'')||a.order.localeCompare(b.order)||a.time.localeCompare(b.time));
