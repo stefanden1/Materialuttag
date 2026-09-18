@@ -154,7 +154,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 <div id="scanStatus" class="small"></div>
 <label>Antal uttaget</label>
 <div class="row">
-<input id="qty" type="number" min="1" value="1">
+<input id="qty" type="number" min="1" value="1" inputmode="numeric">
 <select id="qtyUnit" style="max-width:100px">
 <option value="St" selected>St</option>
 <option value="Frp">Frp</option>
@@ -164,7 +164,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 </select>
 </div>
 <label>Antal kvar <span class="small">(frivilligt)</span></label>
-<input id="remaining" type="number" min="0" placeholde>
+<input id="remaining" type="number" min="0" inputmode="numeric">
 <label>Kommentar <span class="small">(frivilligt, t.ex. vad artikeln är)</span></label>
 <input id="comment" placeholder="t.ex. O-ring hydraulcylinder">
 <button class="secondary" onclick="addItem()">＋ LÄGG TILL ARTIKEL</button>
@@ -254,7 +254,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 <input id="ewArticle" disabled>
 <label>Antal uttaget</label>
 <div class="row">
-<input id="ewQty" type="number" min="1">
+<input id="ewQty" type="number" min="1" inputmode="numeric">
 <select id="ewUnit" style="max-width:100px">
 <option value="St">St</option>
 <option value="Frp">Frp</option>
@@ -264,7 +264,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 </select>
 </div>
 <label>Antal kvar <span class="small">(frivilligt)</span></label>
-<input id="ewRemaining" type="number" min="0">
+<input id="ewRemaining" type="number" min="0" inputmode="numeric">
 <label>Kommentar <span class="small">(frivilligt)</span></label>
 <input id="ewComment">
 <button class="primary" style="margin-top:10px" onclick="saveEditWithdrawal()">SPARA</button>
