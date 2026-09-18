@@ -141,8 +141,10 @@ label{font-size:13px;font-weight:700;color:#374151}
 <div id="registerStatus" class="small" style="margin-top:2px"></div>
 </div>
 <label>EAMA-nummer</label>
-<input id="article" placeholder="Skriv siffror – EAMA läggs till automatiskt" autocomplete="off" oninput="onArticleInput()">
-<button type="button" class="secondary" onclick="startScanner()">Skanna QR</button>
+<div class="row">
+<input id="article" placeholder="Skriv siffror – EAMA läggs till automatiskt" autocomplete="off" inputmode="numeric" oninput="onArticleInput()">
+<button type="button" class="secondary" style="margin-top:6px;max-width:150px" onclick="startScanner()">Skanna QR</button>
+</div>
 <div id="qr-reader" class="hidden"></div>
 <div id="scanStatus" class="small"></div>
 <label>Antal uttaget</label>
