@@ -336,7 +336,7 @@ let fbdb=null,ordersRef=null,withdrawalsRef=null,fbauth=null;
 // 3. Ändra SHARED_LOGIN_EMAIL nedan till den mejladress du skapade kontot med.
 // 4. Firebase-konsolen → Realtime Database → Rules → byt till att kräva inloggning, t.ex.:
 //    { "rules": { ".read": "auth != null", ".write": "auth != null" } }
-const SHARED_LOGIN_EMAIL = "inloggmaterialuttag@hotmail.com";
+const SHARED_LOGIN_EMAIL = "[email protected]";
 if(firebaseEnabled){
  firebase.initializeApp(firebaseConfig);
  fbdb=firebase.database();
@@ -346,9 +346,18 @@ if(firebaseEnabled){
   if(user){
    document.getElementById('loginScreen').classList.add('hidden');
    document.getElementById('mainApp').classList.remove('hidden');
+   // Synken (skift, register) kan inte sättas upp förrän inloggningen är
+   // bekräftad – annars nekar databasreglerna läsningen och t.ex. "Dagens
+   // uttag" eller registersökningen blir tomma/inaktuella tyst i bakgrunden.
+   if(db.shift)subscribeShift(db.shift);
+   subscribeRegister();
   } else {
    document.getElementById('mainApp').classList.add('hidden');
    document.getElementById('loginScreen').classList.remove('hidden');
+   // Koppla bort ev. öppna lyssnare mot skiftets data och registret – annars
+   // fortsätter de tyst försöka läsa mot databasen trots att man loggat ut.
+   subscribeShift('');
+   unsubscribeRegister();
   }
  });
 } else {
@@ -391,7 +400,6 @@ function subscribeShift(shift){
   localStorage.setItem(key,JSON.stringify(db));render();
  });
 }
-if(firebaseEnabled && db.shift)subscribeShift(db.shift);
 
 // ====== MASKIN/KOSTNADSSTÄLLE-REGISTER ======
 // Läser det befintliga registret som redan finns i Firebase under "register/machines"
@@ -444,12 +452,17 @@ function recordKstUsage(kst){
 }
 loadKstUsage();
 updateRegisterStatus();
-if(firebaseEnabled){
- fbdb.ref('.info/connected').on('value',snap=>{
+let connectedRef=null,registerMachinesRef=null,registerCostCentersRef=null;
+function subscribeRegister(){
+ if(!firebaseEnabled)return;
+ unsubscribeRegister(); // koppla bort ev. tidigare lyssnare (t.ex. vid utlogg+inlogg utan sidladdning)
+ connectedRef=fbdb.ref('.info/connected');
+ connectedRef.on('value',snap=>{
   firebaseConnected=snap.val()===true;
   updateRegisterStatus();
  });
- fbdb.ref('register/machines').on('value',snap=>{
+ registerMachinesRef=fbdb.ref('register/machines');
+ registerMachinesRef.on('value',snap=>{
   const val=snap.val()||{};
   registerMachinesList=Object.keys(val).map(k=>({
    key:k,
@@ -463,7 +476,8 @@ if(firebaseEnabled){
   refreshAcuteSuggestions();
   updateRegisterStatus();
  });
- fbdb.ref('register/costCenters').on('value',snap=>{
+ registerCostCentersRef=fbdb.ref('register/costCenters');
+ registerCostCentersRef.on('value',snap=>{
   const val=snap.val()||{};
   registerCostCentersList=Object.keys(val).map(k=>({
    key:k,
@@ -475,6 +489,12 @@ if(firebaseEnabled){
   refreshAcuteSuggestions();
   updateRegisterStatus();
  });
+}
+function unsubscribeRegister(){
+ if(connectedRef)connectedRef.off();
+ if(registerMachinesRef)registerMachinesRef.off();
+ if(registerCostCentersRef)registerCostCentersRef.off();
+ connectedRef=null;registerMachinesRef=null;registerCostCentersRef=null;
 }
 function updateRegisterStatus(){
  const el=document.getElementById('registerStatus');
