@@ -10,6 +10,7 @@
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <style>
 *{box-sizing:border-box}
 body{margin:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111827}
@@ -32,6 +33,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 .success{background:#ecfdf5;border:1px solid #a7f3d0;padding:12px;border-radius:12px;margin-bottom:12px}
 .scanbox{height:150px;border:2px dashed #9ca3af;border-radius:16px;display:flex;align-items:center;justify-content:center;text-align:center;color:#6b7280;margin:10px 0}
 .modal.hidden{display:none}.modal{position:fixed;inset:0;background:#0008;display:flex;align-items:center;justify-content:center;padding:22px;z-index:20}
+.loginWrap.hidden{display:none}.loginWrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f3f4f6}
 .modalbox{background:#fff;border-radius:18px;padding:22px;width:min(440px,100%);box-shadow:0 15px 50px #0005}
 #qr-reader{margin:8px 0 10px;overflow:hidden;border-radius:12px}.modalbox h2{margin:0 0 9px}.modalbox p{color:#4b5563;line-height:1.45}
 .modalbuttons{display:flex;gap:10px;margin-top:18px}.modalbuttons button{flex:1}
@@ -53,7 +55,17 @@ label{font-size:13px;font-weight:700;color:#374151}
 </style>
 </head>
 <body>
-<div class="app">
+<div id="loginScreen" class="loginWrap hidden">
+<div class="card" style="width:100%;max-width:360px;margin:20px;box-sizing:border-box">
+<h2>Logga in</h2>
+<p class="small">Ange lösenordet för att öppna Materialuttag.</p>
+<label>Lösenord</label>
+<input id="loginPassword" type="password" autocomplete="current-password" placeholder="Lösenord" onkeydown="if(event.key==='Enter')doLogin()">
+<button class="primary" onclick="doLogin()">LOGGA IN</button>
+<p class="small" id="loginStatus" style="margin-top:8px;color:#991b1b"></p>
+</div>
+</div>
+<div class="app hidden" id="mainApp">
 <header class="top">
 <button class="gearBtn" onclick="show('settings')" aria-label="Inställningar">⚙️</button>
 <h1>Materialuttag</h1>
@@ -87,6 +99,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 <div class="card">
 <h2>Inställningar användare</h2>
 <button class="secondary" onclick="pendingReturn='settings';show('shift')">SKIFT / ANVÄNDARE</button>
+<button class="secondary" id="logoutBtn" onclick="doLogout()">LOGGA UT</button>
 </div>
 <div class="card">
 <h2>Ändra i register</h2>
@@ -314,10 +327,50 @@ messagingSenderId: "246268725057",
 appId: "1:246268725057:web:cda318b487ea15863f03c0"
 };
 const firebaseEnabled = firebaseConfig.apiKey !== "YOUR_API_KEY" && !!window.firebase;
-let fbdb=null,ordersRef=null,withdrawalsRef=null;
+let fbdb=null,ordersRef=null,withdrawalsRef=null,fbauth=null;
+
+// ====== INLOGGNING (delat konto, för att göra datan privat) ======
+// 1. Firebase-konsolen → Authentication → Sign-in method → aktivera "Email/Password".
+// 2. Firebase-konsolen → Authentication → Users → Add user → skapa ETT gemensamt konto
+//    (mejlen behöver inte vara hemlig, det är bara ett kontonamn – lösenordet är det som skyddar).
+// 3. Ändra SHARED_LOGIN_EMAIL nedan till den mejladress du skapade kontot med.
+// 4. Firebase-konsolen → Realtime Database → Rules → byt till att kräva inloggning, t.ex.:
+//    { "rules": { ".read": "auth != null", ".write": "auth != null" } }
+const SHARED_LOGIN_EMAIL = "[email protected]";
 if(firebaseEnabled){
  firebase.initializeApp(firebaseConfig);
  fbdb=firebase.database();
+ fbauth=firebase.auth();
+ fbauth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
+ fbauth.onAuthStateChanged(user=>{
+  if(user){
+   document.getElementById('loginScreen').classList.add('hidden');
+   document.getElementById('mainApp').classList.remove('hidden');
+  } else {
+   document.getElementById('mainApp').classList.add('hidden');
+   document.getElementById('loginScreen').classList.remove('hidden');
+  }
+ });
+} else {
+ // Ingen Firebase konfigurerad – inget att logga in mot, visa appen direkt.
+ document.getElementById('mainApp').classList.remove('hidden');
+ const logoutBtn=document.getElementById('logoutBtn');
+ if(logoutBtn)logoutBtn.classList.add('hidden');
+}
+function doLogin(){
+ const status=document.getElementById('loginStatus');
+ status.textContent='';
+ if(!fbauth){status.textContent='Ingen inloggning konfigurerad.';return;}
+ const pw=document.getElementById('loginPassword').value;
+ if(!pw){status.textContent='Ange lösenord.';return;}
+ fbauth.signInWithEmailAndPassword(SHARED_LOGIN_EMAIL,pw)
+  .then(()=>{document.getElementById('loginPassword').value='';})
+  .catch(()=>{status.textContent='Fel lösenord, försök igen.';});
+}
+function doLogout(){
+ if(!fbauth){alert('Ingen inloggning konfigurerad.');return;}
+ if(!confirm('Logga ut från Materialuttag på den här enheten?'))return;
+ fbauth.signOut();
 }
 function subscribeShift(shift){
  if(!firebaseEnabled)return;
