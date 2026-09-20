@@ -336,7 +336,7 @@ let fbdb=null,ordersRef=null,withdrawalsRef=null,fbauth=null;
 // 3. Ändra SHARED_LOGIN_EMAIL nedan till den mejladress du skapade kontot med.
 // 4. Firebase-konsolen → Realtime Database → Rules → byt till att kräva inloggning, t.ex.:
 //    { "rules": { ".read": "auth != null", ".write": "auth != null" } }
-const SHARED_LOGIN_EMAIL = "InloggMaterialuttag@hotmail.com";
+const SHARED_LOGIN_EMAIL = "inloggmaterialuttag@hotmail.com";
 if(firebaseEnabled){
  firebase.initializeApp(firebaseConfig);
  fbdb=firebase.database();
