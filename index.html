@@ -336,7 +336,7 @@ let fbdb=null,ordersRef=null,withdrawalsRef=null,fbauth=null;
 // 3. Ändra SHARED_LOGIN_EMAIL nedan till den mejladress du skapade kontot med.
 // 4. Firebase-konsolen → Realtime Database → Rules → byt till att kräva inloggning, t.ex.:
 //    { "rules": { ".read": "auth != null", ".write": "auth != null" } }
-const SHARED_LOGIN_EMAIL = "inloggmaterialuttag@hotmail.com";
+const SHARED_LOGIN_EMAIL = "[email protected]";
 if(firebaseEnabled){
  firebase.initializeApp(firebaseConfig);
  fbdb=firebase.database();
@@ -563,7 +563,7 @@ function render(){
  document.getElementById('withdrawals').innerHTML=db.withdrawals.length?
  db.withdrawals.map((w,i)=>`<div class="item withdrawrow">
    <div>
-     <b>${w.time}</b> · ${esc(w.article)} · KST ${esc(w.order)}${w.machine?(' · '+esc(w.machine)):''} · ${w.qty} ${esc(w.unit||'St')} · ${w.remaining===''?'–':w.remaining} kvar · ${esc(w.user)}
+     <b>${esc(withdrawalDate(w))} ${w.time}</b> · ${esc(w.article)} · KST ${esc(w.order)}${w.machine?(' · '+esc(w.machine)):''} · ${w.qty} ${esc(w.unit||'St')} · ${w.remaining===''?'–':w.remaining} kvar · ${esc(w.user)}
      ${w.comment?`<div class="small comment">${esc(w.comment)}</div>`:''}
    </div>
    <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
@@ -574,9 +574,16 @@ function render(){
  '<p class="small">Inga uttag.</p>';
 }
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function withdrawalDate(w){
+ // Bakåtkompatibelt: äldre uttag saknar ett eget "date"-fält, men har alltid
+ // haft "ts" (tidsstämpel), så vi kan räkna fram datumet därifrån ändå.
+ if(w.date)return w.date;
+ if(w.ts)return new Date(w.ts).toLocaleDateString('sv-SE');
+ return '';
+}
 function removeWithdrawal(i){
  const w=db.withdrawals[i];
- if(!confirm(`Ta bort uttaget ${w.article} (${w.qty} ${w.unit||'St'}) från ${w.time}?`))return;
+ if(!confirm(`Ta bort uttaget ${w.article} (${w.qty} ${w.unit||'St'}) från ${withdrawalDate(w)} ${w.time}?`))return;
  if(firebaseEnabled && db.shift && w.id){
   fbdb.ref('shifts/'+db.shift+'/withdrawals/'+w.id).remove();
  } else {
@@ -851,9 +858,9 @@ function register(){
    show('shift');
    return;
  }
- let d=new Date(),time=d.toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit'});
+ let d=new Date(),time=d.toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit'}),date=d.toLocaleDateString('sv-SE');
  currentItems.forEach(x=>{
-  const rec={time,article:x.article,order:currentOrder.no,machine:currentOrder.machine||'',qty:x.qty,unit:x.unit||'St',remaining:x.remaining,comment:x.comment||'',user:db.user,shift:db.shift,acute,ts:d.getTime()};
+  const rec={date,time,article:x.article,order:currentOrder.no,machine:currentOrder.machine||'',qty:x.qty,unit:x.unit||'St',remaining:x.remaining,comment:x.comment||'',user:db.user,shift:db.shift,acute,ts:d.getTime()};
   if(firebaseEnabled && withdrawalsRef){
    withdrawalsRef.push(rec);
   } else {
@@ -1108,13 +1115,17 @@ function confirmRemoveRegisterEntry(){
 function closeExportModal(){document.getElementById('exportModal').classList.add('hidden')}
 const ALL_SHIFT_CODES=['2A','2B','3A','3B','3C','4A','4B','4C','4D','Dagtid'];
 function buildAndDownloadXlsx(list,filename){
- const header=['Skift','Klockslag','EAMA-nr','Kostnadsställe/order','Maskin','Antal uttaget','Enhet','Antal kvar','Kommentar','Signatur'];
- const sorted=list.slice().sort((a,b)=>(a.shift||'').localeCompare(b.shift||'')||a.order.localeCompare(b.order)||a.time.localeCompare(b.time));
- const rows=[header,...sorted.map(w=>[w.shift||'',w.time,w.article,w.order,w.machine||'',w.qty,w.unit||'St',w.remaining,w.comment||'',w.user])];
+ const header=['Skift','Datum','Klockslag','EAMA-nr','Kostnadsställe/order','Maskin','Antal uttaget','Enhet','Antal kvar','Kommentar','Signatur'];
+ const sorted=list.slice().sort((a,b)=>
+  (a.shift||'').localeCompare(b.shift||'')||
+  a.order.localeCompare(b.order)||
+  withdrawalDate(a).localeCompare(withdrawalDate(b))||
+  a.time.localeCompare(b.time));
+ const rows=[header,...sorted.map(w=>[w.shift||'',withdrawalDate(w),w.time,w.article,w.order,w.machine||'',w.qty,w.unit||'St',w.remaining,w.comment||'',w.user])];
  const ws=XLSX.utils.aoa_to_sheet(rows);
- // Lås Kostnadsställe/order-kolumnen (kolumn D) till textformat, så Excel aldrig
+ // Lås Kostnadsställe/order-kolumnen till textformat, så Excel aldrig
  // tolkar t.ex. "0340" som talet 340 och tappar den inledande nollan.
- const orderCol=3; // 0-indexerad: Skift,Klockslag,EAMA-nr,Kostnadsställe/order,...
+ const orderCol=4; // 0-indexerad: Skift,Datum,Klockslag,EAMA-nr,Kostnadsställe/order,...
  for(let r=1;r<rows.length;r++){
   const ref=XLSX.utils.encode_cell({r,c:orderCol});
   const cell=ws[ref];
@@ -1125,7 +1136,7 @@ function buildAndDownloadXlsx(list,filename){
    delete cell.w;
   }
  }
- ws['!cols']=[{wch:8},{wch:10},{wch:12},{wch:16},{wch:30},{wch:13},{wch:8},{wch:11},{wch:32},{wch:14}];
+ ws['!cols']=[{wch:8},{wch:11},{wch:10},{wch:12},{wch:16},{wch:30},{wch:13},{wch:8},{wch:11},{wch:32},{wch:14}];
  const wb=XLSX.utils.book_new();
  XLSX.utils.book_append_sheet(wb,ws,'Uttag');
  XLSX.writeFile(wb,filename);
