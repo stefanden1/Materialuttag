@@ -336,7 +336,34 @@ let fbdb=null,ordersRef=null,withdrawalsRef=null,fbauth=null;
 // 3. Ändra SHARED_LOGIN_EMAIL nedan till den mejladress du skapade kontot med.
 // 4. Firebase-konsolen → Realtime Database → Rules → byt till att kräva inloggning, t.ex.:
 //    { "rules": { ".read": "auth != null", ".write": "auth != null" } }
-const SHARED_LOGIN_EMAIL = "inloggmaterialuttag@hotmail.com";
+const SHARED_LOGIN_EMAIL = "[email protected]";
+
+// ====== AUTOMATISK UTLOGGNING EFTER X TIMMAR ======
+// Ändra AUTO_LOGOUT_HOURS till önskat antal timmar (t.ex. 8 för en arbetsdag,
+// 24 för ett dygn). Räknas från den ursprungliga inloggningen, inte från
+// senaste aktivitet – och överlever att man stänger/öppnar fliken igen,
+// eftersom tidpunkten sparas i localStorage.
+const AUTO_LOGOUT_HOURS = 12;
+const LOGIN_TIME_KEY = 'materialuttag_login_time';
+let autoLogoutTimer=null;
+function startAutoLogoutTimer(){
+ stopAutoLogoutTimer();
+ autoLogoutTimer=setInterval(checkAutoLogout,60000); // kollar varje minut
+ checkAutoLogout(); // kolla direkt också, ifall tiden redan gått ut medan fliken var stängd
+}
+function stopAutoLogoutTimer(){
+ if(autoLogoutTimer){clearInterval(autoLogoutTimer);autoLogoutTimer=null;}
+}
+function checkAutoLogout(){
+ const loginTime=parseInt(localStorage.getItem(LOGIN_TIME_KEY)||'0',10);
+ if(!loginTime)return;
+ const hoursElapsed=(Date.now()-loginTime)/(1000*60*60);
+ if(hoursElapsed>=AUTO_LOGOUT_HOURS){
+  stopAutoLogoutTimer();
+  fbauth.signOut();
+ }
+}
+
 if(firebaseEnabled){
  firebase.initializeApp(firebaseConfig);
  fbdb=firebase.database();
@@ -346,6 +373,12 @@ if(firebaseEnabled){
   if(user){
    document.getElementById('loginScreen').classList.add('hidden');
    document.getElementById('mainApp').classList.remove('hidden');
+   // Sätt bara login-tiden om den inte redan finns, så en återupptagen
+   // session (t.ex. efter en sidladdning) inte nollställer klockan.
+   if(!localStorage.getItem(LOGIN_TIME_KEY)){
+    localStorage.setItem(LOGIN_TIME_KEY,String(Date.now()));
+   }
+   startAutoLogoutTimer();
    // Synken (skift, register) kan inte sättas upp förrän inloggningen är
    // bekräftad – annars nekar databasreglerna läsningen och t.ex. "Dagens
    // uttag" eller registersökningen blir tomma/inaktuella tyst i bakgrunden.
@@ -354,6 +387,8 @@ if(firebaseEnabled){
   } else {
    document.getElementById('mainApp').classList.add('hidden');
    document.getElementById('loginScreen').classList.remove('hidden');
+   localStorage.removeItem(LOGIN_TIME_KEY);
+   stopAutoLogoutTimer();
    // Koppla bort ev. öppna lyssnare mot skiftets data och registret – annars
    // fortsätter de tyst försöka läsa mot databasen trots att man loggat ut.
    subscribeShift('');
