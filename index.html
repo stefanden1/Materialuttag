@@ -336,7 +336,7 @@ let fbdb=null,ordersRef=null,withdrawalsRef=null,fbauth=null;
 // 3. Ändra SHARED_LOGIN_EMAIL nedan till den mejladress du skapade kontot med.
 // 4. Firebase-konsolen → Realtime Database → Rules → byt till att kräva inloggning, t.ex.:
 //    { "rules": { ".read": "auth != null", ".write": "auth != null" } }
-const SHARED_LOGIN_EMAIL = "inloggmaterialuttag@hotmail.com";
+const SHARED_LOGIN_EMAIL = "[email protected]";
 if(firebaseEnabled){
  firebase.initializeApp(firebaseConfig);
  fbdb=firebase.database();
@@ -1171,9 +1171,13 @@ function runExport(){
   exportCurrentShiftAndClear();
  }
 }
+function exportTimestamp(){
+ const now=new Date();
+ return now.toLocaleDateString('sv-SE')+'_'+now.toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit'}).replace(':','');
+}
 function exportCurrentShiftAndClear(){
  if(!db.withdrawals.length)return alert('Inga uttag att exportera för skiftet.');
- buildAndDownloadXlsx(db.withdrawals,`materialuttag_${db.shift||'skift'}.xlsx`);
+ buildAndDownloadXlsx(db.withdrawals,`materialuttag_${db.shift||'skift'}_${exportTimestamp()}.xlsx`);
  if(firebaseEnabled && db.shift){
   if(withdrawalsRef)withdrawalsRef.set(null);
   if(ordersRef)ordersRef.set(null);
@@ -1197,7 +1201,7 @@ function exportAllShifts(){
  )).then(results=>{
   const all=[].concat(...results);
   if(!all.length){alert('Inga uttag att exportera för något skift.');return;}
-  buildAndDownloadXlsx(all,'materialuttag_alla_skift.xlsx');
+  buildAndDownloadXlsx(all,`materialuttag_alla_skift_${exportTimestamp()}.xlsx`);
   closeExportModal();
   if(!confirm(`Filen med alla skiftens uttag är nedladdad.\n\nDenna funktion är endast till för den som hämtar den kompletta listan – bekräfta bara "OK" när filen är säkert sparad. Detta raderar ALLA skiftens uttags- och arbetsorderhistorik (${ALL_SHIFT_CODES.join(', ')}) och går inte att ångra.\n\nRensa alla skiftens historik nu?`)){
    return;
