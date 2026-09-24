@@ -336,14 +336,14 @@ let fbdb=null,ordersRef=null,withdrawalsRef=null,fbauth=null;
 // 3. Ändra SHARED_LOGIN_EMAIL nedan till den mejladress du skapade kontot med.
 // 4. Firebase-konsolen → Realtime Database → Rules → byt till att kräva inloggning, t.ex.:
 //    { "rules": { ".read": "auth != null", ".write": "auth != null" } }
-const SHARED_LOGIN_EMAIL = "[email protected]";
+const SHARED_LOGIN_EMAIL = "inloggmaterialuttag@hotmail.com";
 
 // ====== AUTOMATISK UTLOGGNING EFTER X TIMMAR ======
 // Ändra AUTO_LOGOUT_HOURS till önskat antal timmar (t.ex. 8 för en arbetsdag,
 // 24 för ett dygn). Räknas från den ursprungliga inloggningen, inte från
 // senaste aktivitet – och överlever att man stänger/öppnar fliken igen,
 // eftersom tidpunkten sparas i localStorage.
-const AUTO_LOGOUT_HOURS = 12;
+const AUTO_LOGOUT_HOURS = 13;
 const LOGIN_TIME_KEY = 'materialuttag_login_time';
 let autoLogoutTimer=null;
 function startAutoLogoutTimer(){
