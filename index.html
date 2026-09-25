@@ -73,6 +73,10 @@ label{font-size:13px;font-weight:700;color:#374151}
 </header>
 
 <main id="home">
+<div class="card hidden" id="partSearchCard">
+<button class="secondary" onclick="show('partSearch')">SÖK RESERVDEL</button>
+</div>
+
 <div class="card">
 <button class="primary" onclick="startAcute()">UTTAG AKUT</button>
 </div>
@@ -89,7 +93,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 <button class="secondary" onclick="show('list')">VISA UTTAG</button>
 </div>
 
-<div class="card">
+<div class="card" id="exportCard">
 <button class="secondary" onclick="confirmExport()">EXPORTERA EXCEL</button>
 </div>
 </main>
@@ -102,10 +106,21 @@ label{font-size:13px;font-weight:700;color:#374151}
 <button class="secondary" id="logoutBtn" onclick="doLogout()">LOGGA UT</button>
 </div>
 <div class="card">
+<h2>Roll på den här enheten</h2>
+<p class="small">Styr om Exportera Excel visas på hemskärmen, för att undvika att någon råkar exportera/rensa uttag av misstag. Gäller bara den här enheten.</p>
+<button class="secondary" id="roleWithdrawBtn" onclick="setUserRole('withdraw')">Tar ut artiklar</button>
+<button class="secondary" id="roleSapBtn" onclick="setUserRole('sap')">För in listor i SAP</button>
+</div>
+<div class="card">
 <h2>Ändra i register</h2>
 <button class="secondary" onclick="openRegisterAdd()">Lägg till i register</button>
 <button class="secondary" onclick="openRegisterEdit()">Ändra maskindata</button>
 <button class="secondary" onclick="openRegisterRemove()">Ta bort ur register</button>
+</div>
+<div class="card">
+<h2>Test/demo</h2>
+<p class="small">Demo av kommande reservdelssökning – lägger till en knapp högst upp på hemskärmen. Söker bara i ett litet exempel-urval än så länge, inte hela förrådet.</p>
+<button class="secondary" id="demoSearchToggleBtn" onclick="toggleDemoSearch()">Demo sökning reservdelar: AV</button>
 </div>
 </section>
 
@@ -127,7 +142,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 <h2>Skift / användare</h2>
 <div id="shiftNote" class="success hidden"></div>
 <label>Skift</label>
-<select id="shiftCode">
+<select id="shiftCode" onchange="onShiftCodeChanged()">
 <option value="">Välj skift</option>
 <option value="2A">2A</option>
 <option value="2B">2B</option>
@@ -140,6 +155,11 @@ label{font-size:13px;font-weight:700;color:#374151}
 <option value="4D">4D</option>
 <option value="Dagtid">Dagtid</option>
 </select>
+<div id="groupField" class="hidden">
+<label>Grupp <span class="small">(frivilligt – skriv samma namn som de du vill synka med, t.ex. "TeamA")</span></label>
+<input id="groupCode" placeholder="Lämna tomt för att bara se dina egna uttag">
+<p class="small">Stora/små bokstäver spelar ingen roll — "TeamA" och "teama" räknas som samma grupp.</p>
+</div>
 <label>Namn / signatur</label>
 <input id="userName" placeholder="Ange namn eller signatur">
 <button class="primary" onclick="saveShift()">SPARA</button>
@@ -262,6 +282,16 @@ label{font-size:13px;font-weight:700;color:#374151}
 </div>
 </section>
 
+<section id="partSearch" class="hidden">
+<button class="back" onclick="show('home')">← Tillbaka</button>
+<div class="card">
+<h2>Sök reservdel</h2>
+<p class="small">Demo – söker bara bland ett litet exempel-urval än så länge, inte hela förrådet.</p>
+<input id="partSearchInput" placeholder="Sök på namn eller EAMA-nr…" autocomplete="off" oninput="onPartSearchTyped()">
+<div id="partSearchResults"></div>
+</div>
+</section>
+
 <section id="editWithdrawal" class="hidden">
 <button class="back" onclick="show('list')">← Tillbaka</button>
 <div class="card">
@@ -309,8 +339,47 @@ label{font-size:13px;font-weight:700;color:#374151}
 
 <script>
 const key='materialuttag_v1';
-let db=JSON.parse(localStorage.getItem(key)||'{"shift":"","user":"","orders":[],"withdrawals":[]}');
+let db=JSON.parse(localStorage.getItem(key)||'{"shift":"","user":"","group":"","orders":[],"withdrawals":[]}');
 let currentOrder=null,currentItems=[],acute=false,pendingReturn=null;
+
+// ====== ROLL PÅ DEN HÄR ENHETEN (styr om Exportera Excel visas) ======
+// Sparas lokalt per enhet, inte synkat – rent en skyddsspärr mot att någon
+// råkar trycka Exportera (vilket också rensar uttagshistorik).
+const ROLE_KEY='materialuttag_role_v1';
+let userRole=localStorage.getItem(ROLE_KEY)||'withdraw'; // default: exporten dold tills aktivt vald
+function setUserRole(role){
+ userRole=role;
+ localStorage.setItem(ROLE_KEY,role);
+ render();
+}
+
+// ====== DEMO: SÖK RESERVDEL (förhandsvisning – litet exempel-urval, inte hela förrådet) ======
+const DEMO_SEARCH_KEY='materialuttag_demo_search_v1';
+let demoSearchEnabled=localStorage.getItem(DEMO_SEARCH_KEY)==='1';
+function toggleDemoSearch(){
+ demoSearchEnabled=!demoSearchEnabled;
+ localStorage.setItem(DEMO_SEARCH_KEY,demoSearchEnabled?'1':'0');
+ render();
+}
+const DEMO_PARTS=[
+ {eama:'EAMA01078',name:'O-ring hydraulcylinder 40mm'},
+ {eama:'EAMA00456',name:'Kullager 6205-2RS'},
+ {eama:'EAMA02391',name:'Tätningssats pneumatikcylinder'},
+ {eama:'EAMA00789',name:'Hydraulslang 1/2" 2m'},
+ {eama:'EAMA01532',name:'Kilrem SPA 1250'},
+ {eama:'EAMA00214',name:'Filterinsats hydraulik 10 mikron'},
+ {eama:'EAMA01890',name:'Ventilblock 4/2-vägs'},
+ {eama:'EAMA00967',name:'Packning flänsad DN50'}
+];
+function onPartSearchTyped(){
+ const q=partSearchInput.value.trim().toLowerCase();
+ const box=document.getElementById('partSearchResults');
+ if(!q){box.innerHTML='<p class="small">Skriv för att söka.</p>';return;}
+ const matches=DEMO_PARTS.filter(p=>p.eama.toLowerCase().includes(q)||p.name.toLowerCase().includes(q));
+ box.innerHTML=matches.length?
+  matches.map(p=>`<div class="item"><b>${esc(p.eama)}</b><div class="small">${esc(p.name)}</div></div>`).join(''):
+  '<p class="small">Inga träffar i exempel-urvalet.</p>';
+}
 
 // ====== FIREBASE-KONFIGURATION (för synk mellan flera användare) ======
 // 1. Skapa ett gratis projekt på https://console.firebase.google.com
@@ -336,14 +405,14 @@ let fbdb=null,ordersRef=null,withdrawalsRef=null,fbauth=null;
 // 3. Ändra SHARED_LOGIN_EMAIL nedan till den mejladress du skapade kontot med.
 // 4. Firebase-konsolen → Realtime Database → Rules → byt till att kräva inloggning, t.ex.:
 //    { "rules": { ".read": "auth != null", ".write": "auth != null" } }
-const SHARED_LOGIN_EMAIL = "inloggmaterialuttag@hotmail.com";
+const SHARED_LOGIN_EMAIL = "[email protected]";
 
 // ====== AUTOMATISK UTLOGGNING EFTER X TIMMAR ======
 // Ändra AUTO_LOGOUT_HOURS till önskat antal timmar (t.ex. 8 för en arbetsdag,
 // 24 för ett dygn). Räknas från den ursprungliga inloggningen, inte från
 // senaste aktivitet – och överlever att man stänger/öppnar fliken igen,
 // eftersom tidpunkten sparas i localStorage.
-const AUTO_LOGOUT_HOURS = 13;
+const AUTO_LOGOUT_HOURS = 12;
 const LOGIN_TIME_KEY = 'materialuttag_login_time';
 let autoLogoutTimer=null;
 function startAutoLogoutTimer(){
@@ -355,6 +424,7 @@ function stopAutoLogoutTimer(){
  if(autoLogoutTimer){clearInterval(autoLogoutTimer);autoLogoutTimer=null;}
 }
 function checkAutoLogout(){
+ if(!fbauth)return;
  const loginTime=parseInt(localStorage.getItem(LOGIN_TIME_KEY)||'0',10);
  if(!loginTime)return;
  const hoursElapsed=(Date.now()-loginTime)/(1000*60*60);
@@ -363,6 +433,13 @@ function checkAutoLogout(){
   fbauth.signOut();
  }
 }
+// setInterval kan tystna helt när fliken ligger i bakgrunden länge (mobilen
+// pausar JS för att spara batteri) – så kolla också varje gång fliken blir
+// synlig igen, annars kan en person som lämnat appen i bakgrunden hela
+// dagen missa utloggningen tills nästa gång sidan laddas om på riktigt.
+document.addEventListener('visibilitychange',()=>{
+ if(document.visibilityState==='visible')checkAutoLogout();
+});
 
 if(firebaseEnabled){
  firebase.initializeApp(firebaseConfig);
@@ -416,19 +493,41 @@ function doLogout(){
  if(!confirm('Logga ut från Materialuttag på den här enheten?'))return;
  fbauth.signOut();
 }
+function isPlainDagtid(){return db.shift==='Dagtid' && !db.group}
+function effectiveShiftKey(){
+ if(db.shift==='Dagtid' && db.group)return 'Dagtid_'+fbKey(db.group);
+ return db.shift;
+}
 function subscribeShift(shift){
  if(!firebaseEnabled)return;
  if(ordersRef)ordersRef.off();
  if(withdrawalsRef)withdrawalsRef.off();
  ordersRef=null;withdrawalsRef=null;
  if(!shift)return;
- ordersRef=fbdb.ref('shifts/'+shift+'/orders');
- withdrawalsRef=fbdb.ref('shifts/'+shift+'/withdrawals');
+ if(isPlainDagtid()){
+  // Ren Dagtid (ingen grupp vald) delas av väldigt många olika personer –
+  // arbetsorderlistan hålls därför helt lokal per enhet, och "Dagens uttag"
+  // visar bara det den här enheten själv registrerat. Uttagen skrivs ändå
+  // alltid till Firebase (se register()), så de finns med i "alla skift"-
+  // exporten – det är bara den LIVE-synkade VISNINGEN som är enhetslokal.
+  db.orders=db.dagtidOrders||[];
+  db.withdrawals=db.dagtidWithdrawals||[];
+  localStorage.setItem(key,JSON.stringify(db));render();
+  return;
+ }
+ const effKey=effectiveShiftKey();
+ if(db.shift==='Dagtid' && db.group){
+  // Registrera gruppnamnet så "alla skift"-exporten senare hittar den,
+  // annars vore gruppens data osynlig i helhetsrapporten.
+  fbdb.ref('dagtidGroups/'+fbKey(db.group)).set(db.group);
+ }
+ ordersRef=fbdb.ref('shifts/'+effKey+'/orders');
  ordersRef.on('value',snap=>{
   const val=snap.val()||{};
   db.orders=Object.keys(val).map(id=>({id,...val[id]}));
   localStorage.setItem(key,JSON.stringify(db));render();
  });
+ withdrawalsRef=fbdb.ref('shifts/'+effKey+'/withdrawals');
  withdrawalsRef.on('value',snap=>{
   const val=snap.val()||{};
   db.withdrawals=Object.keys(val).map(id=>({id,...val[id]})).sort((a,b)=>(a.ts||0)-(b.ts||0));
@@ -580,7 +679,13 @@ function searchRegister(q){
  return searchRegisterFull(q).map(m=>({value:m.costCenter||m.machineNo,label:m.label,machineNo:m.machineNo,machineName:m.name}));
 }
 
-function save(){localStorage.setItem(key,JSON.stringify(db));render()}
+function save(){
+ if(isPlainDagtid()){
+  db.dagtidOrders=db.orders;        // spara den lokala Dagtid-listan separat
+  db.dagtidWithdrawals=db.withdrawals; // ...och samma för uttagsvyn
+ }
+ localStorage.setItem(key,JSON.stringify(db));render();
+}
 function show(id){
  if(id!=='withdraw') stopScanner();
  document.querySelectorAll('main,section').forEach(x=>x.classList.add('hidden'));
@@ -588,6 +693,16 @@ function show(id){
  render();
 }
 function render(){
+ onShiftCodeChanged();
+ document.getElementById('exportCard').classList.toggle('hidden',userRole!=='sap');
+ const roleW=document.getElementById('roleWithdrawBtn'),roleS=document.getElementById('roleSapBtn');
+ if(roleW && roleS){
+  roleW.className=userRole==='withdraw'?'primary':'secondary';
+  roleS.className=userRole==='sap'?'primary':'secondary';
+ }
+ document.getElementById('partSearchCard').classList.toggle('hidden',!demoSearchEnabled);
+ const demoBtn=document.getElementById('demoSearchToggleBtn');
+ if(demoBtn)demoBtn.textContent='Demo sökning reservdelar: '+(demoSearchEnabled?'PÅ':'AV');
  document.getElementById('shiftInfo').textContent=db.shift?`Skift ${db.shift} – ${db.user||'ingen signatur'}`:'Inget aktivt skift';
  document.getElementById('orders').innerHTML=db.orders.length?
  db.orders.map((o,i)=>`<div class="order"><div><b>${esc(o.no)}</b><div class="small">${esc(o.machine||'')}</div></div><div style="display:flex;gap:6px"><button onclick="selectOrder(${i})">VÄLJ</button><button class="del" style="padding:9px 10px" onclick="removeOrder(${i})">×</button></div></div>`).join(''):
@@ -620,7 +735,10 @@ function removeWithdrawal(i){
  const w=db.withdrawals[i];
  if(!confirm(`Ta bort uttaget ${w.article} (${w.qty} ${w.unit||'St'}) från ${withdrawalDate(w)} ${w.time}?`))return;
  if(firebaseEnabled && db.shift && w.id){
-  fbdb.ref('shifts/'+db.shift+'/withdrawals/'+w.id).remove();
+  fbdb.ref('shifts/'+effectiveShiftKey()+'/withdrawals/'+w.id).remove();
+  // Ren Dagtid har ingen live-lyssnare för uttagen (visas bara lokalt), så
+  // ingenting annat skulle plocka bort raden ur listan – gör det manuellt.
+  if(isPlainDagtid())db.withdrawals.splice(i,1);
  } else {
   db.withdrawals.splice(i,1);
  }
@@ -652,8 +770,17 @@ function saveEditWithdrawal(){
  if(firebaseEnabled && db.shift && editWithdrawalId){
   // Skriver till posten via dess egen nyckel, så rätt post träffas även om
   // listan hunnit ändras (nya/borttagna uttag från andra) medan vyn var öppen.
-  fbdb.ref('shifts/'+db.shift+'/withdrawals/'+editWithdrawalId).update({qty:q,unit,remaining,comment})
-   .then(()=>{show('list');})
+  fbdb.ref('shifts/'+effectiveShiftKey()+'/withdrawals/'+editWithdrawalId).update({qty:q,unit,remaining,comment})
+   .then(()=>{
+    // Ren Dagtid har ingen live-lyssnare (visas bara lokalt) – uppdatera
+    // därför listan för hand, annars syns aldrig ändringen i appen.
+    if(isPlainDagtid() && editWithdrawalLocalIndex!==null && db.withdrawals[editWithdrawalLocalIndex]){
+     const w=db.withdrawals[editWithdrawalLocalIndex];
+     db.withdrawals[editWithdrawalLocalIndex]={...w,qty:q,unit,remaining,comment};
+     save();
+    }
+    show('list');
+   })
    .catch(err=>{status.textContent='❌ Kunde inte spara: '+err.message;});
  } else if(editWithdrawalLocalIndex!==null && db.withdrawals[editWithdrawalLocalIndex]){
   const w=db.withdrawals[editWithdrawalLocalIndex];
@@ -666,7 +793,7 @@ function removeOrder(i){
  const o=db.orders[i];
  if(!confirm(`Ta bort arbetsordern ${o.no}?`))return;
  if(firebaseEnabled && db.shift && o.id){
-  fbdb.ref('shifts/'+db.shift+'/orders/'+o.id).remove();
+  fbdb.ref('shifts/'+effectiveShiftKey()+'/orders/'+o.id).remove();
  } else {
   db.orders.splice(i,1);
  }
@@ -904,7 +1031,13 @@ function register(){
  let d=new Date(),time=d.toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit'}),date=d.toLocaleDateString('sv-SE');
  currentItems.forEach(x=>{
   const rec={date,time,article:x.article,order:currentOrder.no,machine:currentOrder.machine||'',qty:x.qty,unit:x.unit||'St',remaining:x.remaining,comment:x.comment||'',user:db.user,shift:db.shift,acute,ts:d.getTime()};
-  if(firebaseEnabled && withdrawalsRef){
+  if(firebaseEnabled && isPlainDagtid()){
+   // Skrivs alltid till Firebase (så "alla skift"-exporten aldrig tappar
+   // data), men visas bara lokalt på den här enheten – se subscribeShift().
+   const pushRef=fbdb.ref('shifts/Dagtid/withdrawals').push(rec);
+   rec.id=pushRef.key;
+   db.withdrawals.push(rec);
+  } else if(firebaseEnabled && withdrawalsRef){
    withdrawalsRef.push(rec);
   } else {
    db.withdrawals.push(rec);
@@ -913,10 +1046,15 @@ function register(){
  recordKstUsage(currentOrder.no);
  currentItems=[];save();show('home');
 }
+function onShiftCodeChanged(){
+ const gf=document.getElementById('groupField');
+ if(gf)gf.classList.toggle('hidden',shiftCode.value!=='Dagtid');
+}
 function saveShift(){
  if(!shiftCode.value)return alert('Välj skift.');
  if(!userName.value.trim())return alert('Ange namn/signatur.');
  db.shift=shiftCode.value;db.user=userName.value.trim();
+ db.group=(shiftCode.value==='Dagtid')?groupCode.value.trim().toUpperCase():'';
  subscribeShift(db.shift);
  save();
  document.getElementById('shiftNote').classList.add('hidden');
@@ -1225,26 +1363,30 @@ function exportCurrentShiftAndClear(){
 }
 function exportAllShifts(){
  if(!firebaseEnabled){alert('Synk mot Firebase är inte konfigurerad – kan bara exportera skiftets egna uttag.');return;}
- Promise.all(ALL_SHIFT_CODES.map(code=>
-  fbdb.ref('shifts/'+code+'/withdrawals').once('value').then(snap=>{
-   const val=snap.val()||{};
-   return Object.keys(val).map(id=>{
-    const rec=val[id];
-    return {id,...rec,shift:rec.shift||code};
-   });
-  })
- )).then(results=>{
-  const all=[].concat(...results);
+ fbdb.ref('dagtidGroups').once('value').then(groupsSnap=>{
+  const groups=groupsSnap.val()||{};
+  const groupCodes=Object.keys(groups).map(k=>'Dagtid_'+k);
+  const allCodes=[...ALL_SHIFT_CODES,...groupCodes];
+  return Promise.all(allCodes.map(code=>
+   fbdb.ref('shifts/'+code+'/withdrawals').once('value').then(snap=>{
+    const val=snap.val()||{};
+    return Object.keys(val).map(id=>{
+     const rec=val[id];
+     return {id,...rec,shift:rec.shift||code};
+    });
+   })
+  )).then(results=>({allCodes,all:[].concat(...results)}));
+ }).then(({allCodes,all})=>{
   if(!all.length){alert('Inga uttag att exportera för något skift.');return;}
   buildAndDownloadXlsx(all,`materialuttag_alla_skift_${exportTimestamp()}.xlsx`);
   closeExportModal();
-  if(!confirm(`Filen med alla skiftens uttag är nedladdad.\n\nDenna funktion är endast till för den som hämtar den kompletta listan – bekräfta bara "OK" när filen är säkert sparad. Detta raderar ALLA skiftens uttags- och arbetsorderhistorik (${ALL_SHIFT_CODES.join(', ')}) och går inte att ångra.\n\nRensa alla skiftens historik nu?`)){
+  if(!confirm(`Filen med alla skiftens uttag är nedladdad.\n\nDenna funktion är endast till för den som hämtar den kompletta listan – bekräfta bara "OK" när filen är säkert sparad. Detta raderar ALLA skiftens uttags- och arbetsorderhistorik (${allCodes.join(', ')}) och går inte att ångra.\n\nRensa alla skiftens historik nu?`)){
    return;
   }
-  Promise.all(ALL_SHIFT_CODES.map(code=>Promise.all([
+  Promise.all(allCodes.map(code=>Promise.all([
    fbdb.ref('shifts/'+code+'/withdrawals').set(null),
    fbdb.ref('shifts/'+code+'/orders').set(null)
-  ]))).then(()=>{
+  ]))).then(()=>fbdb.ref('dagtidGroups').set(null)).then(()=>{
    alert('Alla skiftens historik är rensad.');
   }).catch(err=>{alert('Kunde inte rensa alla skift: '+err.message);});
  }).catch(err=>{alert('Kunde inte hämta alla skift: '+err.message);});
