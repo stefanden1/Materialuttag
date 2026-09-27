@@ -40,9 +40,10 @@ label{font-size:13px;font-weight:700;color:#374151}
 .withdrawrow{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
 .del{background:#fee2e2;color:#991b1b;padding:6px 10px;border-radius:10px;font-size:12px;font-weight:700;white-space:nowrap}
 .iconBtn{background:#e5e7eb;color:#111827;border:0;border-radius:10px;padding:7px 11px;font-size:15px;cursor:pointer;line-height:1}
-.partItemRow{display:flex;justify-content:space-between;align-items:center;gap:10px}
-.partItemRow>div:first-child{flex:1;min-width:0}
-.partItemRow>button{flex-shrink:0;white-space:nowrap}
+.partSummary{cursor:pointer}
+.partSummaryRow{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.partChevron{color:#9ca3af;font-size:20px;flex-shrink:0}
+.partDetail{margin-top:8px;padding-top:8px;border-top:1px dashed #e5e7eb}
 .partMeta{font-size:14px;color:#6b7280}
 .comment{color:#374151;font-style:italic}
 .acwrap{position:relative}
@@ -410,12 +411,20 @@ const DEMO_PARTS=[
  {eama:'EAMA01005',name:'Rengöringsduk mikrofiber',machine:'',plats:'F01-04'}
 ];
 function renderPartItem(p){
- return `<div class="item partItemRow">
-   <div>
-     <b>${esc(p.name)}</b>
-     <div class="partMeta">${esc(p.eama)}${p.plats?(' · Plats: '+esc(p.plats)):''}</div>
+ return `<div class="item">
+   <div class="partSummary" onclick="this.nextElementSibling.classList.toggle('hidden')">
+     <div class="partSummaryRow">
+       <div>
+         <b>${esc(p.name)}</b>
+         <div class="partMeta">${p.plats?('Plats: '+esc(p.plats)):''}</div>
+       </div>
+       <span class="partChevron">›</span>
+     </div>
    </div>
-   <button class="iconBtn" onclick="moveArticleToWithdraw('${esc(p.eama)}')">Flytta till uttag</button>
+   <div class="partDetail hidden">
+     <div class="partMeta">EAMA-nr: ${esc(p.eama)}</div>
+     <button class="iconBtn" style="margin-top:8px" onclick="moveArticleToWithdraw('${esc(p.eama)}')">Flytta till uttag</button>
+   </div>
  </div>`;
 }
 // Tar med sig EAMA-numret (och, om man kom via maskinsökningen, även maskinen/
