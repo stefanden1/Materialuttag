@@ -306,6 +306,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 <div id="partMachineArticleSearchWrap" class="hidden">
 <label>Sök artikel på den här maskinen</label>
 <input id="partMachineArticleSearch" placeholder="Sök på namn eller EAMA-nr…" autocomplete="off" oninput="onPartMachineArticleTyped()">
+<button type="button" class="iconBtn" style="margin-top:6px" onclick="showAllMachineArticles()">Visa hela maskinens artikellista</button>
 </div>
 <div id="partMachineResults"></div>
 </div>
@@ -422,19 +423,20 @@ function renderPartItem(p){
      </div>
    </div>
    <div class="partDetail hidden">
-     <div class="partMeta">EAMA-nr: ${esc(p.eama)}</div>
+     <div class="partMeta">${esc(p.eama)}</div>
      <button class="iconBtn" style="margin-top:8px" onclick="moveArticleToWithdraw('${esc(p.eama)}')">Flytta till uttag</button>
    </div>
  </div>`;
 }
-// Tar med sig EAMA-numret (och, om man kom via maskinsökningen, även maskinen/
-// kostnadsstället) direkt till Uttag akut, så man slipper skriva in det igen.
+// Tar med sig EAMA-numret (och, om man kom via maskinsökningen, även maskinnumret –
+// prioriterat före kostnadsställe, för mer specifik kostnadsplacering) direkt till
+// Uttag akut, så man slipper skriva in det igen.
 function moveArticleToWithdraw(eamaNo){
  const machineMatch=(partSearchView==='byMachine')?selectedPartMachineMatch:null;
  startAcute();
  article.value=eamaNo;
  if(machineMatch){
-  acuteOrder.value=machineMatch.costCenter||machineMatch.machineNo||'';
+  acuteOrder.value=machineMatch.machineNo||machineMatch.costCenter||'';
   acuteSelectedMachine={no:machineMatch.machineNo||'',name:machineMatch.name||''};
  }
 }
@@ -519,6 +521,10 @@ function selectPartMachine(m){
 }
 function onPartMachineArticleTyped(){
  renderPartMachineArticles(partMachineArticleSearch.value.trim().toLowerCase());
+}
+function showAllMachineArticles(){
+ partMachineArticleSearch.value='';
+ renderPartMachineArticles('');
 }
 function renderPartMachineArticles(q){
  const box=document.getElementById('partMachineResults');
