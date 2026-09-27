@@ -406,10 +406,12 @@ const DEMO_PARTS=[
  {eama:'EAMA01005',name:'Rengöringsduk mikrofiber',machine:'',plats:'F01-04'}
 ];
 function renderPartItem(p){
- return `<div class="item">
-   <b>${esc(p.eama)}</b>
-   <div class="small">${esc(p.name)}${p.plats?(' · Plats: '+esc(p.plats)):''}</div>
-   <button class="iconBtn" style="margin-top:6px" onclick="moveArticleToWithdraw('${esc(p.eama)}')">Flytta till uttag</button>
+ return `<div class="item withdrawrow">
+   <div>
+     <b>${esc(p.name)}</b>
+     <div class="small">${esc(p.eama)}${p.plats?(' · Plats: '+esc(p.plats)):''}</div>
+   </div>
+   <button class="iconBtn" onclick="moveArticleToWithdraw('${esc(p.eama)}')">Flytta till uttag</button>
  </div>`;
 }
 // Tar med sig EAMA-numret (och, om man kom via maskinsökningen, även maskinen/
