@@ -39,7 +39,9 @@ label{font-size:13px;font-weight:700;color:#374151}
 .modalbuttons{display:flex;gap:10px;margin-top:18px}.modalbuttons button{flex:1}
 .withdrawrow{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
 .del{background:#fee2e2;color:#991b1b;padding:6px 10px;border-radius:10px;font-size:12px;font-weight:700;white-space:nowrap}
-.iconBtn{background:#e5e7eb;color:#111827;border:0;border-radius:10px;padding:6px 10px;font-size:14px;cursor:pointer;line-height:1}
+.iconBtn{background:#e5e7eb;color:#111827;border:0;border-radius:10px;padding:7px 11px;font-size:15px;cursor:pointer;line-height:1}
+.partItemRow{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.partMeta{font-size:14px;color:#6b7280}
 .comment{color:#374151;font-style:italic}
 .acwrap{position:relative}
 .acsuggest{position:absolute;left:0;right:0;top:calc(100% - 6px);background:#fff;border:1px solid #d1d5db;border-radius:10px;box-shadow:0 8px 24px #0002;max-height:220px;overflow-y:auto;z-index:15}
@@ -406,10 +408,10 @@ const DEMO_PARTS=[
  {eama:'EAMA01005',name:'Rengöringsduk mikrofiber',machine:'',plats:'F01-04'}
 ];
 function renderPartItem(p){
- return `<div class="item withdrawrow">
+ return `<div class="item partItemRow">
    <div>
      <b>${esc(p.name)}</b>
-     <div class="small">${esc(p.eama)}${p.plats?(' · Plats: '+esc(p.plats)):''}</div>
+     <div class="partMeta">${esc(p.eama)}${p.plats?(' · Plats: '+esc(p.plats)):''}</div>
    </div>
    <button class="iconBtn" onclick="moveArticleToWithdraw('${esc(p.eama)}')">Flytta till uttag</button>
  </div>`;
