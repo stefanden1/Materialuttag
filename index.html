@@ -86,18 +86,18 @@ label{font-size:13px;font-weight:700;color:#374151}
 <button class="secondary" onclick="openPartSearch()">SÖK ARTIKEL</button>
 </div>
 
-<div class="card">
+<div class="card" id="acuteCard">
 <button class="primary" onclick="startAcute()">UTTAG AKUT</button>
 </div>
 
-<div class="card">
+<div class="card" id="orderCard">
 <b>Uttag med arbetsorder</b>
 <div id="orders"></div>
 <button class="secondary" onclick="show('newOrder')">LÄGG TILL ARBETSORDER</button>
 </div>
 
-<div class="card">
-<b>Dagens uttag</b>
+<div class="card" id="withdrawalListCard">
+<b>Uttagslista</b>
 <div id="count" class="small" style="margin-top:6px"></div>
 <button class="secondary" onclick="show('list')">VISA UTTAG</button>
 </div>
@@ -116,15 +116,18 @@ label{font-size:13px;font-weight:700;color:#374151}
 </div>
 <div class="card">
 <h2>Roll på den här enheten</h2>
-<p class="small">Styr om Exportera Excel visas på hemskärmen, för att undvika att någon råkar exportera/rensa uttag av misstag. Gäller bara den här enheten.</p>
+<p class="small">Styr vad som visas på hemskärmen. Väljer man "Export excellista" visas endast exportknappen – allt annat döljs, för att undvika att någon råkar trycka fel. Gäller bara den här enheten.</p>
 <button class="secondary" id="roleWithdrawBtn" onclick="setUserRole('withdraw')">Tar ut artiklar</button>
-<button class="secondary" id="roleSapBtn" onclick="setUserRole('sap')">För in listor i SAP</button>
+<button class="secondary" id="roleSapBtn" onclick="setUserRole('sap')">Export excellista</button>
 </div>
-<div class="card">
+<div class="card" id="registerAdminCard">
 <h2>Ändra i register</h2>
+<button class="secondary" id="registerAdminBtn" onclick="unlockRegisterAdmin()">Administrera register</button>
+<div id="registerAdminButtons" class="hidden">
 <button class="secondary" onclick="openRegisterAdd()">Lägg till i register</button>
 <button class="secondary" onclick="openRegisterEdit()">Ändra maskindata</button>
 <button class="secondary" onclick="openRegisterRemove()">Ta bort ur register</button>
+</div>
 </div>
 <div class="card">
 <h2>Test/demo</h2>
@@ -382,6 +385,19 @@ function setUserRole(role){
  userRole=role;
  localStorage.setItem(ROLE_KEY,role);
  render();
+}
+
+// ====== ADMINISTRERA REGISTER (enkel spärr, inte riktig säkerhet – det sköter inloggningen) ======
+const REGISTER_ADMIN_PASSWORD='ADMIN';
+function unlockRegisterAdmin(){
+ const pw=prompt('Ange lösenord för att administrera registret:');
+ if(pw===null)return; // avbrutet
+ if(pw===REGISTER_ADMIN_PASSWORD){
+  document.getElementById('registerAdminBtn').classList.add('hidden');
+  document.getElementById('registerAdminButtons').classList.remove('hidden');
+ } else {
+  alert('Fel lösenord.');
+ }
 }
 
 // ====== DEMO: SÖK RESERVDEL (förhandsvisning – litet exempel-urval, inte hela förrådet) ======
@@ -866,13 +882,17 @@ function show(id){
 }
 function render(){
  onShiftCodeChanged();
- document.getElementById('exportCard').classList.toggle('hidden',userRole!=='sap');
+ const sapMode=userRole==='sap';
+ document.getElementById('exportCard').classList.toggle('hidden',!sapMode);
+ document.getElementById('acuteCard').classList.toggle('hidden',sapMode);
+ document.getElementById('orderCard').classList.toggle('hidden',sapMode);
+ document.getElementById('withdrawalListCard').classList.toggle('hidden',sapMode);
  const roleW=document.getElementById('roleWithdrawBtn'),roleS=document.getElementById('roleSapBtn');
  if(roleW && roleS){
   roleW.className=userRole==='withdraw'?'primary':'secondary';
   roleS.className=userRole==='sap'?'primary':'secondary';
  }
- document.getElementById('partSearchCard').classList.toggle('hidden',!demoSearchEnabled);
+ document.getElementById('partSearchCard').classList.toggle('hidden',sapMode || !demoSearchEnabled);
  const demoBtn=document.getElementById('demoSearchToggleBtn');
  if(demoBtn)demoBtn.textContent='Demo sökning artikel: '+(demoSearchEnabled?'PÅ':'AV');
  document.getElementById('shiftInfo').textContent=db.shift?`Skift ${db.shift} – ${db.user||'ingen signatur'}`:'Inget aktivt skift';
