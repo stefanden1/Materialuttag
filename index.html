@@ -389,18 +389,27 @@ function toggleDemoSearch(){
 const DEMO_PARTS=[
  {eama:'EAMA01078',name:'O-ring hydraulcylinder 40mm',machine:'Pegard 1',plats:'F10-30D'},
  {eama:'EAMA00456',name:'Kullager 6205-2RS',machine:'Pegard 1',plats:'F10-31'},
+ {eama:'EAMA01203',name:'Servomotor 2kW',machine:'Pegard 1',plats:'F10-32A'},
+ {eama:'EAMA00650',name:'Gummidämpare M10',machine:'Pegard 1',plats:'F10-33'},
  {eama:'EAMA02391',name:'Tätningssats pneumatikcylinder',machine:'Heller 2',plats:'F12-05B'},
  {eama:'EAMA00789',name:'Hydraulslang 1/2" 2m',machine:'Heller 2',plats:'F12-06'},
- {eama:'EAMA01532',name:'Kilrem SPA 1250',machine:'',plats:'F03-14A'},
+ {eama:'EAMA01144',name:'Ställdon pneumatik 90°',machine:'Heller 2',plats:'F12-07C'},
+ {eama:'EAMA00512',name:'Säkring 16A gG',machine:'Heller 2',plats:'F12-08'},
  {eama:'EAMA00214',name:'Filterinsats hydraulik 10 mikron',machine:'Robot 2',plats:'F08-22C'},
  {eama:'EAMA01890',name:'Ventilblock 4/2-vägs',machine:'Robot 2',plats:'F08-23'},
- {eama:'EAMA00967',name:'Packning flänsad DN50',machine:'',plats:'F03-15D'}
+ {eama:'EAMA01677',name:'Griparm gummiinlägg',machine:'Robot 2',plats:'F08-24A'},
+ {eama:'EAMA00933',name:'Encoderkabel 5m',machine:'Robot 2',plats:'F08-25'},
+ {eama:'EAMA01532',name:'Kilrem SPA 1250',machine:'',plats:'F03-14A'},
+ {eama:'EAMA00967',name:'Packning flänsad DN50',machine:'',plats:'F03-15D'},
+ {eama:'EAMA00301',name:'Arbetshandskar stl 9',machine:'',plats:'F01-02'},
+ {eama:'EAMA00842',name:'Skyddsglasögon klara',machine:'',plats:'F01-03A'},
+ {eama:'EAMA01005',name:'Rengöringsduk mikrofiber',machine:'',plats:'F01-04'}
 ];
 function renderPartItem(p){
  return `<div class="item">
    <b>${esc(p.eama)}</b>
    <div class="small">${esc(p.name)}${p.plats?(' · Plats: '+esc(p.plats)):''}</div>
-   <button class="secondary" style="margin-top:6px" onclick="moveArticleToWithdraw('${esc(p.eama)}')">Flytta till uttag</button>
+   <button class="iconBtn" style="margin-top:6px" onclick="moveArticleToWithdraw('${esc(p.eama)}')">Flytta till uttag</button>
  </div>`;
 }
 // Tar med sig EAMA-numret (och, om man kom via maskinsökningen, även maskinen/
