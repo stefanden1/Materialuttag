@@ -48,6 +48,10 @@ label{font-size:13px;font-weight:700;color:#374151}
 .comment{color:#374151;font-style:italic}
 .acwrap{position:relative}
 .acsuggest{position:absolute;left:0;right:0;top:calc(100% - 6px);background:#fff;border:1px solid #d1d5db;border-radius:10px;box-shadow:0 8px 24px #0002;max-height:220px;overflow-y:auto;z-index:15}
+.machineArticleList{max-height:420px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+@media (min-width:700px){
+ .machineArticleList{max-height:none;overflow-y:visible}
+}
 .acsuggest .aci{padding:10px 13px;cursor:pointer;border-bottom:1px solid #f0f0f0}
 .acsuggest .aci:last-child{border-bottom:none}
 .acsuggest .aci:active,.acsuggest .aci:hover{background:#f3f4f6}
@@ -308,7 +312,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 <input id="partMachineArticleSearch" placeholder="Sök på namn eller EAMA-nr…" autocomplete="off" oninput="onPartMachineArticleTyped()">
 <button type="button" class="iconBtn" style="margin-top:6px" onclick="showAllMachineArticles()">Visa hela maskinens artikellista</button>
 </div>
-<div id="partMachineResults"></div>
+<div id="partMachineResults" class="machineArticleList"></div>
 </div>
 <div id="partSearchAll" class="hidden">
 <label>Sök artikel</label>
