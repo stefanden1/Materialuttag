@@ -298,10 +298,15 @@ label{font-size:13px;font-weight:700;color:#374151}
 <div id="partMachineSuggest" class="acsuggest hidden"></div>
 </div>
 <div id="partMachineSelected" class="success hidden"></div>
+<div id="partMachineArticleSearchWrap" class="hidden">
+<label>Sök artikel på den här maskinen</label>
+<input id="partMachineArticleSearch" placeholder="Sök på namn eller EAMA-nr…" autocomplete="off" oninput="onPartMachineArticleTyped()">
+</div>
 <div id="partMachineResults"></div>
 </div>
 <div id="partSearchAll" class="hidden">
 <label>Sök artikel</label>
+
 <input id="partSearchInput" placeholder="Sök på namn eller EAMA-nr…" autocomplete="off" oninput="onPartSearchTyped()">
 <div id="partSearchResults"></div>
 </div>
@@ -378,17 +383,37 @@ function toggleDemoSearch(){
  render();
 }
 // "machine" är namnet på en riktig maskin i ert register (om det finns) – bara
-// själva reservdelarna/kopplingen är påhittad exempeldata, inte riktig SAP-data.
+// själva artiklarna/kopplingen/förrådsplatsen är påhittad exempeldata, inte
+// riktig SAP-data. Förrådsplats-format: F<gång>-<hylla><ev. hyllplansbokstav>,
+// t.ex. F10-30D (gång 10, hylla 30, hyllplan D) – bokstaven är inte alltid med.
 const DEMO_PARTS=[
- {eama:'EAMA01078',name:'O-ring hydraulcylinder 40mm',machine:'Pegard 1'},
- {eama:'EAMA00456',name:'Kullager 6205-2RS',machine:'Pegard 1'},
- {eama:'EAMA02391',name:'Tätningssats pneumatikcylinder',machine:'Heller 2'},
- {eama:'EAMA00789',name:'Hydraulslang 1/2" 2m',machine:'Heller 2'},
- {eama:'EAMA01532',name:'Kilrem SPA 1250',machine:''},
- {eama:'EAMA00214',name:'Filterinsats hydraulik 10 mikron',machine:'Robot 2'},
- {eama:'EAMA01890',name:'Ventilblock 4/2-vägs',machine:'Robot 2'},
- {eama:'EAMA00967',name:'Packning flänsad DN50',machine:''}
+ {eama:'EAMA01078',name:'O-ring hydraulcylinder 40mm',machine:'Pegard 1',plats:'F10-30D'},
+ {eama:'EAMA00456',name:'Kullager 6205-2RS',machine:'Pegard 1',plats:'F10-31'},
+ {eama:'EAMA02391',name:'Tätningssats pneumatikcylinder',machine:'Heller 2',plats:'F12-05B'},
+ {eama:'EAMA00789',name:'Hydraulslang 1/2" 2m',machine:'Heller 2',plats:'F12-06'},
+ {eama:'EAMA01532',name:'Kilrem SPA 1250',machine:'',plats:'F03-14A'},
+ {eama:'EAMA00214',name:'Filterinsats hydraulik 10 mikron',machine:'Robot 2',plats:'F08-22C'},
+ {eama:'EAMA01890',name:'Ventilblock 4/2-vägs',machine:'Robot 2',plats:'F08-23'},
+ {eama:'EAMA00967',name:'Packning flänsad DN50',machine:'',plats:'F03-15D'}
 ];
+function renderPartItem(p){
+ return `<div class="item">
+   <b>${esc(p.eama)}</b>
+   <div class="small">${esc(p.name)}${p.plats?(' · Plats: '+esc(p.plats)):''}</div>
+   <button class="secondary" style="margin-top:6px" onclick="moveArticleToWithdraw('${esc(p.eama)}')">Flytta till uttag</button>
+ </div>`;
+}
+// Tar med sig EAMA-numret (och, om man kom via maskinsökningen, även maskinen/
+// kostnadsstället) direkt till Uttag akut, så man slipper skriva in det igen.
+function moveArticleToWithdraw(eamaNo){
+ const machineMatch=(partSearchView==='byMachine')?selectedPartMachineMatch:null;
+ startAcute();
+ article.value=eamaNo;
+ if(machineMatch){
+  acuteOrder.value=machineMatch.costCenter||machineMatch.machineNo||'';
+  acuteSelectedMachine={no:machineMatch.machineNo||'',name:machineMatch.name||''};
+ }
+}
 let partSearchView='menu'; // 'menu' | 'byMachine' | 'all' – styr vad "← Tillbaka" gör
 function openPartSearch(){
  backToPartSearchMenu();
@@ -403,12 +428,15 @@ function partSearchBack(){
 }
 function backToPartSearchMenu(){
  partSearchView='menu';
+ selectedPartMachineMatch=null;
  document.getElementById('partSearchMenu').classList.remove('hidden');
  document.getElementById('partSearchByMachine').classList.add('hidden');
  document.getElementById('partSearchAll').classList.add('hidden');
  partMachineSearch.value='';
  partSearchInput.value='';
+ partMachineArticleSearch.value='';
  document.getElementById('partMachineSelected').classList.add('hidden');
+ document.getElementById('partMachineArticleSearchWrap').classList.add('hidden');
  document.getElementById('partMachineResults').innerHTML='';
  document.getElementById('partSearchResults').innerHTML='';
  hidePartMachineSuggest();
@@ -429,16 +457,19 @@ function onPartSearchTyped(){
  if(!q){box.innerHTML='<p class="small">Skriv för att söka.</p>';return;}
  const matches=DEMO_PARTS.filter(p=>p.eama.toLowerCase().includes(q)||p.name.toLowerCase().includes(q));
  box.innerHTML=matches.length?
-  matches.map(p=>`<div class="item"><b>${esc(p.eama)}</b><div class="small">${esc(p.name)}</div></div>`).join(''):
+  matches.map(renderPartItem).join(''):
   '<p class="small">Inga träffar i exempel-urvalet.</p>';
 }
 // Maskinsökningen här återanvänder det RIKTIGA registret (samma sökmotor som
-// resten av appen), bara listan över reservdelar kopplade till maskinen är demo.
+// resten av appen), bara listan över artiklar kopplade till maskinen är demo.
 let partMachineMatches=[];
+let selectedPartMachineMatch=null;
 function onPartMachineSearchTyped(){
  const box=document.getElementById('partMachineSuggest');
  const q=partMachineSearch.value.trim().toLowerCase();
+ selectedPartMachineMatch=null;
  document.getElementById('partMachineSelected').classList.add('hidden');
+ document.getElementById('partMachineArticleSearchWrap').classList.add('hidden');
  document.getElementById('partMachineResults').innerHTML='';
  if(!q){box.classList.add('hidden');box.innerHTML='';partMachineMatches=[];return}
  partMachineMatches=searchRegisterFull(q).filter(m=>m.type==='machine').slice(0,8);
@@ -452,17 +483,28 @@ function onPartMachineSearchTyped(){
  box.classList.remove('hidden');
 }
 function selectPartMachine(m){
+ selectedPartMachineMatch=m;
  partMachineSearch.value=m.machineNo;
  hidePartMachineSuggest();
  const sel=document.getElementById('partMachineSelected');
  sel.innerHTML=`<b>${esc(m.machineNo)}</b> – ${esc(m.name||'')}`;
  sel.classList.remove('hidden');
- const machineName=(m.name||'').toLowerCase();
- const matches=DEMO_PARTS.filter(p=>p.machine && p.machine.toLowerCase()===machineName);
+ document.getElementById('partMachineArticleSearchWrap').classList.remove('hidden');
+ partMachineArticleSearch.value='';
+ renderPartMachineArticles('');
+}
+function onPartMachineArticleTyped(){
+ renderPartMachineArticles(partMachineArticleSearch.value.trim().toLowerCase());
+}
+function renderPartMachineArticles(q){
  const box=document.getElementById('partMachineResults');
+ if(!selectedPartMachineMatch){box.innerHTML='';return;}
+ const machineName=(selectedPartMachineMatch.name||'').toLowerCase();
+ let matches=DEMO_PARTS.filter(p=>p.machine && p.machine.toLowerCase()===machineName);
+ if(q)matches=matches.filter(p=>p.eama.toLowerCase().includes(q)||p.name.toLowerCase().includes(q));
  box.innerHTML=matches.length?
-  matches.map(p=>`<div class="item"><b>${esc(p.eama)}</b><div class="small">${esc(p.name)}</div></div>`).join(''):
-  '<p class="small">Inga reservdelar kopplade till den här maskinen i exempel-urvalet än.</p>';
+  matches.map(renderPartItem).join(''):
+  (q?'<p class="small">Inga träffar bland artiklarna på den här maskinen.</p>':'<p class="small">Inga artiklar kopplade till den här maskinen i exempel-urvalet än.</p>');
 }
 function hidePartMachineSuggest(){
  const box=document.getElementById('partMachineSuggest');
