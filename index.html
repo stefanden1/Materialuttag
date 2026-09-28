@@ -444,9 +444,36 @@ function renderPartItem(p){
    </div>
    <div class="partDetail hidden">
      <div class="partMeta">${esc(p.eama)}</div>
-     <button class="iconBtn" style="margin-top:8px" onclick="moveArticleToWithdraw('${esc(p.eama)}')">Flytta till uttag</button>
+     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+       <button class="iconBtn" onclick="moveArticleToWithdraw('${esc(p.eama)}')">Uttag akut</button>
+       <button class="iconBtn" onclick="togglePartOrderPick(this,'${esc(p.eama)}')">Uttag med arbetsorder</button>
+     </div>
+     <div class="hidden" style="margin-top:8px"></div>
    </div>
  </div>`;
+}
+// Fäller ut en rullista med arbetsorderna som ligger på hemskärmen just nu.
+// Listan byggs när man trycker (inte när sökresultatet ritas), så den alltid är aktuell.
+function togglePartOrderPick(btn,eamaNo){
+ const box=btn.parentElement.nextElementSibling;
+ if(!box.classList.contains('hidden')){box.classList.add('hidden');return;}
+ if(!db.orders.length){
+  box.innerHTML='<p class="small">Inga arbetsorder på hemskärmen.</p>';
+ } else {
+  box.innerHTML=`<select onchange="moveArticleToOrder('${eamaNo}',this)">
+   <option value="">Välj arbetsorder…</option>
+   ${db.orders.map((o,i)=>`<option value="${i}">${esc(o.no)}${o.machine?(' – '+esc(o.machine)):''}</option>`).join('')}
+  </select>`;
+ }
+ box.classList.remove('hidden');
+}
+// Startar ett uttag mot vald arbetsorder med EAMA-numret redan ifyllt.
+function moveArticleToOrder(eamaNo,selectEl){
+ const idx=parseInt(selectEl.value,10);
+ selectEl.value='';
+ if(isNaN(idx)||!db.orders[idx])return;
+ selectOrder(idx); // öppnar uttagsvyn mot ordern (och tömmer fälten)...
+ article.value=eamaNo; // ...så EAMA-numret måste sättas efteråt
 }
 // Tar med sig EAMA-numret (och, om man kom via maskinsökningen, även maskinnumret –
 // prioriterat före kostnadsställe, för mer specifik kostnadsplacering) direkt till
@@ -593,7 +620,7 @@ let fbdb=null,ordersRef=null,withdrawalsRef=null,fbauth=null;
 // 3. Ändra SHARED_LOGIN_EMAIL nedan till den mejladress du skapade kontot med.
 // 4. Firebase-konsolen → Realtime Database → Rules → byt till att kräva inloggning, t.ex.:
 //    { "rules": { ".read": "auth != null", ".write": "auth != null" } }
-const SHARED_LOGIN_EMAIL = " inloggmaterialuttag@hotmail.com ";
+const SHARED_LOGIN_EMAIL = "[email protected]";
 
 // ====== AUTOMATISK UTLOGGNING EFTER X TIMMAR ======
 // Ändra AUTO_LOGOUT_HOURS till önskat antal timmar (t.ex. 8 för en arbetsdag,
