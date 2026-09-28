@@ -361,8 +361,8 @@ label{font-size:13px;font-weight:700;color:#374151}
 <p>Välj vad som ska exporteras.</p>
 <label>Omfattning</label>
 <select id="exportScope">
-<option value="shift" selected>Skiftets uttag (avslutar dagen, rensar skiftets historik)</option>
-<option value="all">Alla uttag – alla skift (rensar inget)</option>
+<option value="shift" selected>Skiftets uttag (rensar skiftets uttagslista)</option>
+<option value="all">Alla uttag – alla skift (rensar alla uttagslistor)</option>
 </select>
 <div class="modalbuttons">
 <button class="secondary" onclick="closeExportModal()">AVBRYT</button>
@@ -593,7 +593,7 @@ let fbdb=null,ordersRef=null,withdrawalsRef=null,fbauth=null;
 // 3. Ändra SHARED_LOGIN_EMAIL nedan till den mejladress du skapade kontot med.
 // 4. Firebase-konsolen → Realtime Database → Rules → byt till att kräva inloggning, t.ex.:
 //    { "rules": { ".read": "auth != null", ".write": "auth != null" } }
-const SHARED_LOGIN_EMAIL = "inloggmaterialuttag@hotmail.com";
+const SHARED_LOGIN_EMAIL = "[email protected]";
 
 // ====== AUTOMATISK UTLOGGNING EFTER X TIMMAR ======
 // Ändra AUTO_LOGOUT_HOURS till önskat antal timmar (t.ex. 8 för en arbetsdag,
@@ -1544,15 +1544,15 @@ function exportTimestamp(){
 function exportCurrentShiftAndClear(){
  if(!db.withdrawals.length)return alert('Inga uttag att exportera för skiftet.');
  buildAndDownloadXlsx(db.withdrawals,`materialuttag_${db.shift||'skift'}_${exportTimestamp()}.xlsx`);
+ // Arbetsorder rensas medvetet INTE – de tas bort manuellt av den som skapade dem,
+ // eftersom den som exporterar inte vet om arbetet bakom dem är klart.
  if(firebaseEnabled && db.shift){
   if(withdrawalsRef)withdrawalsRef.set(null);
-  if(ordersRef)ordersRef.set(null);
  }
  db.withdrawals=[];
- db.orders=[];
  closeExportModal();
  save();
- alert('Dagen är exporterad och skiftets historik är rensad.');
+ alert('Dagen är exporterad och skiftets uttagslista är rensad. Arbetsorder ligger kvar.');
 }
 function exportAllShifts(){
  if(!firebaseEnabled){alert('Synk mot Firebase är inte konfigurerad – kan bara exportera skiftets egna uttag.');return;}
@@ -1573,14 +1573,15 @@ function exportAllShifts(){
   if(!all.length){alert('Inga uttag att exportera för något skift.');return;}
   buildAndDownloadXlsx(all,`materialuttag_alla_skift_${exportTimestamp()}.xlsx`);
   closeExportModal();
-  if(!confirm(`Filen med alla skiftens uttag är nedladdad.\n\nDenna funktion är endast till för den som hämtar den kompletta listan – bekräfta bara "OK" när filen är säkert sparad. Detta raderar ALLA skiftens uttags- och arbetsorderhistorik (${allCodes.join(', ')}) och går inte att ångra.\n\nRensa alla skiftens historik nu?`)){
+  if(!confirm(`Filen med alla skiftens uttag är nedladdad.\n\nDenna funktion är endast till för den som hämtar den kompletta listan – bekräfta bara "OK" när filen är säkert sparad. Detta raderar ALLA skiftens uttagslistor (${allCodes.join(', ')}) och går inte att ångra. Arbetsorder påverkas inte.\n\nRensa alla skiftens uttagslistor nu?`)){
    return;
   }
-  Promise.all(allCodes.map(code=>Promise.all([
-   fbdb.ref('shifts/'+code+'/withdrawals').set(null),
-   fbdb.ref('shifts/'+code+'/orders').set(null)
-  ]))).then(()=>fbdb.ref('dagtidGroups').set(null)).then(()=>{
-   alert('Alla skiftens historik är rensad.');
+  // Grupp-registret (dagtidGroups) lämnas orört – annars kan en enhet som redan är
+  // igång tappa sin grupp ur registret och missas i nästa "alla skift"-export.
+  Promise.all(allCodes.map(code=>
+   fbdb.ref('shifts/'+code+'/withdrawals').set(null)
+  )).then(()=>{
+   alert('Alla skiftens uttagslistor är rensade.');
   }).catch(err=>{alert('Kunde inte rensa alla skift: '+err.message);});
  }).catch(err=>{alert('Kunde inte hämta alla skift: '+err.message);});
 }
