@@ -27,6 +27,14 @@ input,select{width:100%;padding:13px;border:1px solid #d1d5db;border-radius:10px
 label{font-size:13px;font-weight:700;color:#374151}
 .row{display:flex;gap:9px}.row>*{flex:1}
 .order{display:flex;justify-content:space-between;align-items:center;padding:13px;border:1px solid #e5e7eb;border-radius:12px;margin:8px 0}
+.orderBox{border:1px solid #e5e7eb;border-radius:12px;margin:8px 0}
+.orderTop{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:13px}
+.orderInfo{flex:1;min-width:0;cursor:pointer}
+.orderItems{border-top:1px dashed #e5e7eb;padding:4px 13px 8px}
+.orderItem{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid #f3f4f6}
+.orderItem:last-child{border-bottom:none}
+.orderItem>div:first-child{flex:1;min-width:0}
+.expBadge{flex-shrink:0;white-space:nowrap;font-size:12px;font-weight:700;color:#065f46;background:#d1fae5;border-radius:99px;padding:4px 9px}
 .small{font-size:12px;color:#6b7280}.badge{font-size:11px;padding:5px 8px;border-radius:99px;background:#e5e7eb}
 .item{padding:14px 0;border-bottom:1px solid #eee}.hidden{display:none}
 .back{background:none;padding:0;color:#374151;margin-bottom:12px}
@@ -376,6 +384,15 @@ const key='materialuttag_v1';
 let db=JSON.parse(localStorage.getItem(key)||'{"shift":"","user":"","group":"","orders":[],"withdrawals":[]}');
 let currentOrder=null,currentItems=[],acute=false,pendingReturn=null;
 
+// Lokala id:n – används för arbetsorder som bara finns på den här enheten och för
+// att koppla varje uttag till sin arbetsorder (se "uttag mot arbetsorder" nedan).
+function newLid(){return 'L'+Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
+function orderKeyOf(o){return o.id||o.lid}
+function findOrderByKey(k){return db.orders.find(o=>orderKeyOf(o)===k)}
+[db.orders,db.dagtidOrders||[]].forEach(list=>list.forEach(o=>{if(!o.id&&!o.lid)o.lid=newLid()}));
+const openOrders=new Set(); // vilka arbetsorder som är utfällda på hemskärmen
+function toggleOrderOpen(k){openOrders.has(k)?openOrders.delete(k):openOrders.add(k);render()}
+
 // ====== ROLL PÅ DEN HÄR ENHETEN (styr om Exportera Excel visas) ======
 // Sparas lokalt per enhet, inte synkat – rent en skyddsspärr mot att någon
 // råkar trycka Exportera (vilket också rensar uttagshistorik).
@@ -620,7 +637,7 @@ let fbdb=null,ordersRef=null,withdrawalsRef=null,fbauth=null;
 // 3. Ändra SHARED_LOGIN_EMAIL nedan till den mejladress du skapade kontot med.
 // 4. Firebase-konsolen → Realtime Database → Rules → byt till att kräva inloggning, t.ex.:
 //    { "rules": { ".read": "auth != null", ".write": "auth != null" } }
-const SHARED_LOGIN_EMAIL = " inloggmaterialuttag@hotmail.com ";
+const SHARED_LOGIN_EMAIL = "[email protected]";
 
 // ====== AUTOMATISK UTLOGGNING EFTER X TIMMAR ======
 // Ändra AUTO_LOGOUT_HOURS till önskat antal timmar (t.ex. 8 för en arbetsdag,
@@ -739,7 +756,10 @@ function subscribeShift(shift){
  ordersRef=fbdb.ref('shifts/'+effKey+'/orders');
  ordersRef.on('value',snap=>{
   const val=snap.val()||{};
-  db.orders=Object.keys(val).map(id=>({id,...val[id]}));
+  db.orders=Object.keys(val).map(id=>{
+   const o=val[id];
+   return {id,...o,items:Object.values(o.items||{}).filter(it=>it.article).sort((a,b)=>(a.ts||0)-(b.ts||0))};
+  }).filter(o=>o.no);
   localStorage.setItem(key,JSON.stringify(db));render();
  });
  withdrawalsRef=fbdb.ref('shifts/'+effKey+'/withdrawals');
@@ -924,7 +944,7 @@ function render(){
  if(demoBtn)demoBtn.textContent='Demo sökning artikel: '+(demoSearchEnabled?'PÅ':'AV');
  document.getElementById('shiftInfo').textContent=db.shift?`Skift ${db.shift} – ${db.user||'ingen signatur'}`:'Inget aktivt skift';
  document.getElementById('orders').innerHTML=db.orders.length?
- db.orders.map((o,i)=>`<div class="order"><div><b>${esc(o.no)}</b><div class="small">${esc(o.machine||'')}</div></div><div style="display:flex;gap:6px"><button onclick="selectOrder(${i})">VÄLJ</button><button class="del" style="padding:9px 10px" onclick="removeOrder(${i})">×</button></div></div>`).join(''):
+ db.orders.map((o,i)=>renderOrderBox(o,i)).join(''):
  '<p class="small">Inga arbetsorder ännu.</p>';
  document.getElementById('count').textContent=`${db.withdrawals.length} uttag registrerade`;
  const syncEl=document.getElementById('syncStatus');
@@ -950,6 +970,66 @@ function withdrawalDate(w){
  if(w.ts)return new Date(w.ts).toLocaleDateString('sv-SE');
  return '';
 }
+function renderOrderBox(o,i){
+ const k=orderKeyOf(o),open=openOrders.has(k),items=o.items||[];
+ const itemsHtml=!open?'':`<div class="orderItems">${
+  items.length?items.map(it=>`<div class="orderItem">
+    <div>
+     <b>${esc(it.article)}</b> · ${esc(it.qty)} ${esc(it.unit||'St')}${it.remaining!==''&&it.remaining!=null?(' · '+esc(it.remaining)+' kvar'):''}
+     <div class="small">${esc(it.user||'')} · ${esc(it.date||'')} ${esc(it.time||'')}</div>
+     ${it.comment?`<div class="small comment">${esc(it.comment)}</div>`:''}
+    </div>
+    ${it.exported?'<span class="expBadge">Excel exporterad</span>':''}
+   </div>`).join(''):'<p class="small">Inga uttag mot ordern än.</p>'
+ }</div>`;
+ return `<div class="orderBox">
+  <div class="orderTop">
+   <div class="orderInfo" onclick="toggleOrderOpen('${esc(k)}')">
+    <b>${esc(o.no)}</b> <span class="partChevron" style="font-size:16px">${open?'▾':'›'}</span>
+    <div class="small">${esc(o.machine||'')}</div>
+    <div class="small">${items.length} uttag</div>
+   </div>
+   <div style="display:flex;gap:6px"><button onclick="selectOrder(${i})">VÄLJ</button><button class="del" style="padding:9px 10px" onclick="removeOrder(${i})">×</button></div>
+  </div>
+  ${itemsHtml}
+ </div>`;
+}
+// Speglar en ändring/borttagning av ett uttag till motsvarande rad i arbetsordern
+// (fields=null betyder ta bort raden).
+function mirrorOrderItem(oid,wid,fields){
+ if(!oid||!wid)return;
+ const o=findOrderByKey(oid);
+ if(!o)return;
+ const list=o.items||[];
+ if(o.id&&ordersRef){
+  const ref=fbdb.ref('shifts/'+effectiveShiftKey()+'/orders/'+o.id+'/items/'+wid);
+  if(!fields)ref.remove();
+  else if(list.some(it=>it.wid===wid))ref.update(fields);
+ } else {
+  const idx=list.findIndex(it=>it.wid===wid);
+  if(idx<0)return;
+  if(fields)Object.assign(list[idx],fields);else list.splice(idx,1);
+  save();
+ }
+}
+// Markerar uttagsrader som exporterade – de ligger kvar i ordern, men får en notis.
+function markLocalOrderItemsExported(){
+ db.orders.forEach(o=>{
+  if(o.id&&ordersRef)return;
+  (o.items||[]).forEach(it=>{it.exported=true});
+ });
+}
+function markSyncedOrderItemsExported(){
+ if(!firebaseEnabled||!ordersRef)return;
+ const updates={};
+ db.orders.forEach(o=>{
+  if(!o.id)return;
+  (o.items||[]).forEach(it=>{
+   if(!it.exported)updates['shifts/'+effectiveShiftKey()+'/orders/'+o.id+'/items/'+it.wid+'/exported']=true;
+  });
+ });
+ if(Object.keys(updates).length)fbdb.ref().update(updates);
+}
 function removeWithdrawal(i){
  const w=db.withdrawals[i];
  if(!confirm(`Ta bort uttaget ${w.article} (${w.qty} ${w.unit||'St'}) från ${withdrawalDate(w)} ${w.time}?`))return;
@@ -961,15 +1041,18 @@ function removeWithdrawal(i){
  } else {
   db.withdrawals.splice(i,1);
  }
+ mirrorOrderItem(w.oid,w.wid,null);
  save();
 }
 // ====== JUSTERA UTTAG (antal/enhet/antal kvar/kommentar i efterhand) ======
 let editWithdrawalId=null; // Firebase-nyckeln för posten – används istället för listindex
 let editWithdrawalLocalIndex=null; // fallback endast i lokalt läge utan Firebase-synk
+let editWithdrawalOid=null,editWithdrawalWid=null; // koppling till uttagsraden i arbetsordern
 function openEditWithdrawal(i){
  const w=db.withdrawals[i];
  editWithdrawalId=w.id||null;
  editWithdrawalLocalIndex=i;
+ editWithdrawalOid=w.oid||null;editWithdrawalWid=w.wid||null;
  ewOrder.value=w.order;
  ewArticle.value=w.article;
  ewQty.value=w.qty;
@@ -998,19 +1081,23 @@ function saveEditWithdrawal(){
      db.withdrawals[editWithdrawalLocalIndex]={...w,qty:q,unit,remaining,comment};
      save();
     }
+    mirrorOrderItem(editWithdrawalOid,editWithdrawalWid,{qty:q,unit,remaining,comment});
     show('list');
    })
    .catch(err=>{status.textContent='❌ Kunde inte spara: '+err.message;});
  } else if(editWithdrawalLocalIndex!==null && db.withdrawals[editWithdrawalLocalIndex]){
   const w=db.withdrawals[editWithdrawalLocalIndex];
   db.withdrawals[editWithdrawalLocalIndex]={...w,qty:q,unit,remaining,comment};
+  mirrorOrderItem(editWithdrawalOid,editWithdrawalWid,{qty:q,unit,remaining,comment});
   save();
   show('list');
  }
 }
 function removeOrder(i){
  const o=db.orders[i];
- if(!confirm(`Ta bort arbetsordern ${o.no}?`))return;
+ const n=(o.items||[]).length;
+ if(!confirm(`Ta bort arbetsordern ${o.no}?`+(n?` Dess lista med ${n} uttag försvinner också.`:'')))return;
+ openOrders.delete(orderKeyOf(o));
  if(firebaseEnabled && db.shift && o.id){
   fbdb.ref('shifts/'+effectiveShiftKey()+'/orders/'+o.id).remove();
  } else {
@@ -1025,7 +1112,7 @@ function addOrder(){
  if(firebaseEnabled && db.shift && ordersRef){
   ordersRef.push(o);
  } else {
-  db.orders.push(o);
+  db.orders.push({...o,lid:newLid(),items:[]});
  }
  orderNo.value='';machine.value='';save();show('home');
 }
@@ -1250,17 +1337,36 @@ function register(){
  }
  let d=new Date(),time=d.toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit'}),date=d.toLocaleDateString('sv-SE');
  currentItems.forEach(x=>{
+  // Varje uttag får ett eget id (wid) och – vid arbetsorder – en koppling (oid) till
+  // ordern, så uttagsraden i ordern kan följa med om uttaget ändras eller tas bort.
+  const order=(!acute)?findOrderByKey(orderKeyOf(currentOrder)):null;
+  const oid=order?orderKeyOf(order):null;
   const rec={date,time,article:x.article,order:currentOrder.no,machine:currentOrder.machine||'',qty:x.qty,unit:x.unit||'St',remaining:x.remaining,comment:x.comment||'',user:db.user,shift:db.shift,acute,ts:d.getTime()};
+  if(oid)rec.oid=oid;
   if(firebaseEnabled && isPlainDagtid()){
    // Skrivs alltid till Firebase (så "alla skift"-exporten aldrig tappar
    // data), men visas bara lokalt på den här enheten – se subscribeShift().
-   const pushRef=fbdb.ref('shifts/Dagtid/withdrawals').push(rec);
-   rec.id=pushRef.key;
+   const pushRef=fbdb.ref('shifts/Dagtid/withdrawals').push();
+   rec.wid=pushRef.key;
+   pushRef.set(rec);
+   rec.id=rec.wid;
    db.withdrawals.push(rec);
   } else if(firebaseEnabled && withdrawalsRef){
-   withdrawalsRef.push(rec);
+   const pushRef=withdrawalsRef.push();
+   rec.wid=pushRef.key;
+   pushRef.set(rec);
   } else {
+   rec.wid=newLid();
    db.withdrawals.push(rec);
+  }
+  if(order){
+   // Raden i ordern ligger kvar även när uttagslistan rensas vid export.
+   const item={wid:rec.wid,article:rec.article,qty:rec.qty,unit:rec.unit,remaining:rec.remaining,comment:rec.comment,user:rec.user,date:rec.date,time:rec.time,ts:rec.ts,exported:false};
+   if(order.id&&ordersRef){
+    fbdb.ref('shifts/'+effectiveShiftKey()+'/orders/'+order.id+'/items/'+rec.wid).set(item);
+   } else {
+    (order.items=order.items||[]).push(item);
+   }
   }
  });
  recordKstUsage(currentOrder.no);
@@ -1573,6 +1679,8 @@ function exportCurrentShiftAndClear(){
  buildAndDownloadXlsx(db.withdrawals,`materialuttag_${db.shift||'skift'}_${exportTimestamp()}.xlsx`);
  // Arbetsorder rensas medvetet INTE – de tas bort manuellt av den som skapade dem,
  // eftersom den som exporterar inte vet om arbetet bakom dem är klart.
+ markSyncedOrderItemsExported();
+ markLocalOrderItemsExported();
  if(firebaseEnabled && db.shift){
   if(withdrawalsRef)withdrawalsRef.set(null);
  }
@@ -1580,6 +1688,23 @@ function exportCurrentShiftAndClear(){
  closeExportModal();
  save();
  alert('Dagen är exporterad och skiftets uttagslista är rensad. Arbetsorder ligger kvar.');
+}
+function markAllShiftsOrderItemsExported(codes){
+ return Promise.all(codes.map(code=>
+  fbdb.ref('shifts/'+code+'/orders').once('value').then(snap=>{
+   const val=snap.val()||{},u={};
+   Object.keys(val).forEach(oid=>{
+    const items=val[oid].items||{};
+    Object.keys(items).forEach(wid=>{
+     if(!items[wid].exported)u['shifts/'+code+'/orders/'+oid+'/items/'+wid+'/exported']=true;
+    });
+   });
+   return u;
+  })
+ )).then(list=>{
+  const all=Object.assign({},...list);
+  if(Object.keys(all).length)return fbdb.ref().update(all);
+ });
 }
 function exportAllShifts(){
  if(!firebaseEnabled){alert('Synk mot Firebase är inte konfigurerad – kan bara exportera skiftets egna uttag.');return;}
@@ -1600,6 +1725,10 @@ function exportAllShifts(){
   if(!all.length){alert('Inga uttag att exportera för något skift.');return;}
   buildAndDownloadXlsx(all,`materialuttag_alla_skift_${exportTimestamp()}.xlsx`);
   closeExportModal();
+  // Uttagsraderna i arbetsordrarna ligger kvar men får notisen "Excel exporterad".
+  markAllShiftsOrderItemsExported(allCodes).catch(()=>{});
+  markLocalOrderItemsExported();
+  save();
   if(!confirm(`Filen med alla skiftens uttag är nedladdad.\n\nDenna funktion är endast till för den som hämtar den kompletta listan – bekräfta bara "OK" när filen är säkert sparad. Detta raderar ALLA skiftens uttagslistor (${allCodes.join(', ')}) och går inte att ångra. Arbetsorder påverkas inte.\n\nRensa alla skiftens uttagslistor nu?`)){
    return;
   }
