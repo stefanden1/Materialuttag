@@ -112,6 +112,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 
 <div class="card" id="exportCard">
 <button class="secondary" onclick="confirmExport()">EXPORTERA EXCEL</button>
+<button class="secondary" onclick="pendingReturn='home';openExportArchive()">TIDIGARE EXPORTER</button>
 </div>
 </main>
 
@@ -127,6 +128,11 @@ label{font-size:13px;font-weight:700;color:#374151}
 <p class="small">Styr vad som visas på hemskärmen. Väljer man "Export excellista" visas endast exportknappen – allt annat döljs, för att undvika att någon råkar trycka fel. Gäller bara den här enheten.</p>
 <button class="secondary" id="roleWithdrawBtn" onclick="setUserRole('withdraw')">Tar ut artiklar</button>
 <button class="secondary" id="roleSapBtn" onclick="setUserRole('sap')">Export excellista</button>
+</div>
+<div class="card">
+<h2>Export</h2>
+<p class="small">Varje nedladdad excelfil sparas även som en säkerhetskopia i 7 dagar, ifall en nedladdning skulle strula.</p>
+<button class="secondary" onclick="openExportArchive()">Tidigare exporter</button>
 </div>
 <div class="card" id="registerAdminCard">
 <h2>Ändra i register</h2>
@@ -363,6 +369,15 @@ label{font-size:13px;font-weight:700;color:#374151}
 <p class="small" id="ewStatus" style="margin-top:8px"></p>
 </div>
 </section>
+
+<section id="exportArchiveScreen" class="hidden">
+<button class="back" onclick="backFromExportArchive()">← Tillbaka</button>
+<div class="card">
+<h2>Tidigare exporter</h2>
+<p class="small">Säkerhetskopior av tidigare exporterade excelfiler. Sparas i 7 dagar, sen städas de bort automatiskt.</p>
+<div id="exportArchiveList"></div>
+</div>
+</section>
 </div>
 
 <div id="exportModal" class="modal hidden">
@@ -378,6 +393,18 @@ label{font-size:13px;font-weight:700;color:#374151}
 <button class="secondary" onclick="closeExportModal()">AVBRYT</button>
 <button class="primary" onclick="runExport()">EXPORTERA</button>
 </div>
+</div>
+</div>
+
+<div id="downloadConfirmModal" class="modal hidden">
+<div class="modalbox">
+<h2>Kontrollera nedladdningen</h2>
+<p>Filen <b id="downloadConfirmFilename"></b> ska nu ha laddats ner till enheten. Kontrollera det innan du går vidare – uttagslistan rensas först när du bekräftar.</p>
+<div class="modalbuttons">
+<button class="secondary" onclick="retryDownloadConfirm()">Ladda ner igen</button>
+<button class="primary" onclick="confirmDownloadAndProceed()">Filen är nedladdad – fortsätt</button>
+</div>
+<p class="small" style="margin-top:10px">En säkerhetskopia sparas ändå under "Tidigare exporter" i 7 dagar, om du skulle behöva hämta den igen.</p>
 </div>
 </div>
 
@@ -639,7 +666,7 @@ let fbdb=null,ordersRef=null,withdrawalsRef=null,fbauth=null;
 // 3. Ändra SHARED_LOGIN_EMAIL nedan till den mejladress du skapade kontot med.
 // 4. Firebase-konsolen → Realtime Database → Rules → byt till att kräva inloggning, t.ex.:
 //    { "rules": { ".read": "auth != null", ".write": "auth != null" } }
-const SHARED_LOGIN_EMAIL = "inloggmaterialuttag@hotmail.com";
+const SHARED_LOGIN_EMAIL = "[email protected]";
 
 // ====== AUTOMATISK UTLOGGNING EFTER X TIMMAR ======
 // Ändra AUTO_LOGOUT_HOURS till önskat antal timmar (t.ex. 8 för en arbetsdag,
@@ -1634,14 +1661,16 @@ function confirmRemoveRegisterEntry(){
 
 function closeExportModal(){document.getElementById('exportModal').classList.add('hidden')}
 const ALL_SHIFT_CODES=['2A','2B','3A','3B','3C','4A','4B','4C','4D','Dagtid'];
-function buildAndDownloadXlsx(list,filename){
+// Bygger bara raddatan (ren array-of-arrays) – återanvänds både för nedladdning
+// och för säkerhetskopian som sparas under "Tidigare exporter".
+function buildWithdrawalRows(list){
  const header=['EAMA-nr','Antal uttaget','Antal kvar','Ordernr','Maskin/maskinnr','Kostnadsställe','Signatur','Skift','Datum','Klockslag','Kommentar'];
  const sorted=list.slice().sort((a,b)=>
   (a.shift||'').localeCompare(b.shift||'')||
   a.order.localeCompare(b.order)||
   withdrawalDate(a).localeCompare(withdrawalDate(b))||
   a.time.localeCompare(b.time));
- const rows=[header,...sorted.map(w=>[
+ return [header,...sorted.map(w=>[
   w.article,
   `${w.qty} ${w.unit||'St'}`,
   remainingText(w.remaining,w.unit),
@@ -1654,6 +1683,9 @@ function buildAndDownloadXlsx(list,filename){
   w.time,
   w.comment||''
  ])];
+}
+// Gör den faktiska excel-filen av färdigbyggda rader och triggar nedladdningen.
+function downloadXlsxFromRows(rows,filename){
  const ws=XLSX.utils.aoa_to_sheet(rows);
  // Lås Ordernr- och Kostnadsställe-kolumnerna till textformat, så Excel
  // aldrig tolkar t.ex. "0340" som talet 340 och tappar den inledande nollan.
@@ -1675,6 +1707,68 @@ function buildAndDownloadXlsx(list,filename){
  XLSX.utils.book_append_sheet(wb,ws,'Uttag');
  XLSX.writeFile(wb,filename);
 }
+
+// ====== SÄKERHETSKOPIA AV EXPORTER (7 dagar) + BEKRÄFTELSE ATT NEDLADDNINGEN LYCKADES ======
+// En webbläsare kan aldrig ge JS en garanti för att en nedladdning verkligen
+// sparades till disk – "bekräftelsen" nedan är alltså ett självrapporterat
+// klick, inte en teknisk kontroll. Den riktiga säkerheten är kopian som sparas
+// i Firebase i 7 dagar, så datan går att hämta igen även om nedladdningen
+// faktiskt skulle ha misslyckats.
+const EXPORT_ARCHIVE_DAYS=7;
+function archiveExport(rows,filename,scope){
+ if(!firebaseEnabled)return;
+ pruneOldExports();
+ fbdb.ref('exportArchive').push({filename,scope,rows,ts:Date.now()});
+}
+function pruneOldExports(){
+ if(!firebaseEnabled)return;
+ const cutoff=Date.now()-EXPORT_ARCHIVE_DAYS*24*60*60*1000;
+ fbdb.ref('exportArchive').once('value').then(snap=>{
+  const val=snap.val()||{};
+  Object.keys(val).forEach(k=>{ if((val[k].ts||0)<cutoff)fbdb.ref('exportArchive/'+k).remove(); });
+ });
+}
+function backFromExportArchive(){
+ const target=pendingReturn||'settings';pendingReturn=null;
+ show(target);
+}
+function openExportArchive(){
+ show('exportArchiveScreen');
+ const box=document.getElementById('exportArchiveList');
+ if(!firebaseEnabled){box.innerHTML='<p class="small">Synk mot Firebase är inte konfigurerad.</p>';return;}
+ box.innerHTML='<p class="small">Laddar…</p>';
+ pruneOldExports();
+ fbdb.ref('exportArchive').once('value').then(snap=>{
+  const val=snap.val()||{};
+  const list=Object.keys(val).map(k=>({key:k,...val[k]})).sort((a,b)=>(b.ts||0)-(a.ts||0));
+  window.__exportArchiveCache=list;
+  box.innerHTML=list.length?list.map(e=>`<div class="item withdrawrow">
+    <div><b>${esc(e.filename)}</b><div class="small">${esc(new Date(e.ts).toLocaleString('sv-SE'))}</div></div>
+    <button class="iconBtn" onclick="redownloadArchived('${e.key}')">Ladda ner</button>
+   </div>`).join(''):'<p class="small">Inga sparade exporter de senaste 7 dagarna.</p>';
+ }).catch(err=>{box.innerHTML='<p class="small">Kunde inte hämta: '+esc(err.message)+'</p>';});
+}
+function redownloadArchived(keyToFind){
+ const e=(window.__exportArchiveCache||[]).find(x=>x.key===keyToFind);
+ if(e)downloadXlsxFromRows(e.rows,e.filename);
+}
+// Bekräftelsesteget mellan nedladdning och rensning. onConfirmed körs bara
+// när användaren uttryckligen bekräftar att filen laddats ner.
+let pendingDownloadRows=null,pendingDownloadFilename=null,pendingDownloadAction=null;
+function confirmDownloadThenClear(rows,filename,onConfirmed){
+ pendingDownloadRows=rows;pendingDownloadFilename=filename;pendingDownloadAction=onConfirmed;
+ document.getElementById('downloadConfirmFilename').textContent=filename;
+ document.getElementById('downloadConfirmModal').classList.remove('hidden');
+}
+function retryDownloadConfirm(){
+ if(pendingDownloadRows)downloadXlsxFromRows(pendingDownloadRows,pendingDownloadFilename);
+}
+function confirmDownloadAndProceed(){
+ document.getElementById('downloadConfirmModal').classList.add('hidden');
+ const action=pendingDownloadAction;
+ pendingDownloadRows=null;pendingDownloadFilename=null;pendingDownloadAction=null;
+ if(action)action();
+}
 function runExport(){
  const scope=document.getElementById('exportScope').value;
  if(scope==='all'){
@@ -1689,18 +1783,23 @@ function exportTimestamp(){
 }
 function exportCurrentShiftAndClear(){
  if(!db.withdrawals.length)return alert('Inga uttag att exportera för skiftet.');
- buildAndDownloadXlsx(db.withdrawals,`materialuttag_${db.shift||'skift'}_${exportTimestamp()}.xlsx`);
- // Arbetsorder rensas medvetet INTE – de tas bort manuellt av den som skapade dem,
- // eftersom den som exporterar inte vet om arbetet bakom dem är klart.
- markSyncedOrderItemsExported();
- markLocalOrderItemsExported();
- if(firebaseEnabled && db.shift){
-  if(withdrawalsRef)withdrawalsRef.set(null);
- }
- db.withdrawals=[];
+ const filename=`materialuttag_${db.shift||'skift'}_${exportTimestamp()}.xlsx`;
+ const rows=buildWithdrawalRows(db.withdrawals);
+ downloadXlsxFromRows(rows,filename);
+ archiveExport(rows,filename,'shift');
  closeExportModal();
- save();
- alert('Dagen är exporterad och skiftets uttagslista är rensad. Arbetsorder ligger kvar.');
+ confirmDownloadThenClear(rows,filename,()=>{
+  // Arbetsorder rensas medvetet INTE – de tas bort manuellt av den som skapade dem,
+  // eftersom den som exporterar inte vet om arbetet bakom dem är klart.
+  markSyncedOrderItemsExported();
+  markLocalOrderItemsExported();
+  if(firebaseEnabled && db.shift){
+   if(withdrawalsRef)withdrawalsRef.set(null);
+  }
+  db.withdrawals=[];
+  save();
+  alert('Dagen är exporterad och skiftets uttagslista är rensad. Arbetsorder ligger kvar.');
+ });
 }
 function markAllShiftsOrderItemsExported(codes){
  return Promise.all(codes.map(code=>
@@ -1736,22 +1835,27 @@ function exportAllShifts(){
   )).then(results=>({allCodes,all:[].concat(...results)}));
  }).then(({allCodes,all})=>{
   if(!all.length){alert('Inga uttag att exportera för något skift.');return;}
-  buildAndDownloadXlsx(all,`materialuttag_alla_skift_${exportTimestamp()}.xlsx`);
+  const filename=`materialuttag_alla_skift_${exportTimestamp()}.xlsx`;
+  const rows=buildWithdrawalRows(all);
+  downloadXlsxFromRows(rows,filename);
+  archiveExport(rows,filename,'all');
   closeExportModal();
-  // Uttagsraderna i arbetsordrarna ligger kvar men får notisen "Excel exporterad".
-  markAllShiftsOrderItemsExported(allCodes).catch(()=>{});
-  markLocalOrderItemsExported();
-  save();
-  if(!confirm(`Filen med alla skiftens uttag är nedladdad.\n\nDenna funktion är endast till för den som hämtar den kompletta listan – bekräfta bara "OK" när filen är säkert sparad. Detta raderar ALLA skiftens uttagslistor (${allCodes.join(', ')}) och går inte att ångra. Arbetsorder påverkas inte.\n\nRensa alla skiftens uttagslistor nu?`)){
-   return;
-  }
-  // Grupp-registret (dagtidGroups) lämnas orört – annars kan en enhet som redan är
-  // igång tappa sin grupp ur registret och missas i nästa "alla skift"-export.
-  Promise.all(allCodes.map(code=>
-   fbdb.ref('shifts/'+code+'/withdrawals').set(null)
-  )).then(()=>{
-   alert('Alla skiftens uttagslistor är rensade.');
-  }).catch(err=>{alert('Kunde inte rensa alla skift: '+err.message);});
+  confirmDownloadThenClear(rows,filename,()=>{
+   // Uttagsraderna i arbetsordrarna ligger kvar men får notisen "Excel exporterad".
+   markAllShiftsOrderItemsExported(allCodes).catch(()=>{});
+   markLocalOrderItemsExported();
+   save();
+   if(!confirm(`Denna funktion är endast till för den som hämtar den kompletta listan. Detta raderar ALLA skiftens uttagslistor (${allCodes.join(', ')}) och går inte att ångra. Arbetsorder påverkas inte.\n\nRensa alla skiftens uttagslistor nu?`)){
+    return;
+   }
+   // Grupp-registret (dagtidGroups) lämnas orört – annars kan en enhet som redan är
+   // igång tappa sin grupp ur registret och missas i nästa "alla skift"-export.
+   Promise.all(allCodes.map(code=>
+    fbdb.ref('shifts/'+code+'/withdrawals').set(null)
+   )).then(()=>{
+    alert('Alla skiftens uttagslistor är rensade.');
+   }).catch(err=>{alert('Kunde inte rensa alla skift: '+err.message);});
+  });
  }).catch(err=>{alert('Kunde inte hämta alla skift: '+err.message);});
 }
 render();
