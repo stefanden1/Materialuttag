@@ -138,7 +138,8 @@ label{font-size:13px;font-weight:700;color:#374151}
 <h2>Ändra i register</h2>
 <button class="secondary" id="registerAdminBtn" onclick="unlockRegisterAdmin()">Administrera register</button>
 <div id="registerAdminButtons" class="hidden">
-<button class="secondary" onclick="openRegisterAdd()">Lägg till i register</button>
+<button class="secondary" onclick="openRegisterAdd()">Lägg till entitet i register</button>
+<button class="secondary" onclick="openCostCenterEdit()">Lägg till/ändra kostnadsställe</button>
 <button class="secondary" onclick="openRegisterEdit()">Ändra maskindata</button>
 <button class="secondary" onclick="openRegisterRemove()">Ta bort ur register</button>
 </div>
@@ -241,18 +242,45 @@ label{font-size:13px;font-weight:700;color:#374151}
 <section id="registerAdd" class="hidden">
 <button class="back" onclick="show('settings')">← Tillbaka</button>
 <div class="card">
-<h2>Lägg till / uppdatera i registret</h2>
-<p class="small">Sparas direkt till rätt plats i Firebase (register/…) utan att röra dagens uttag eller arbetsorder – till skillnad från att importera en hel JSON-fil i Firebase-konsolen.</p>
-<label>Maskinnummer <span class="small">(lämna tomt om det bara är ett kostnadsställe utan egen maskin)</span></label>
+<h2>Lägg till entitet i register</h2>
+<p class="small">Lägger till en ny maskin/entitet direkt i registret – påverkar inga uttag eller arbetsorder. Kostnadsställen läggs till under "Lägg till/ändra kostnadsställe"; här kan man bara välja bland dem som redan finns.</p>
+<label>Maskinnummer</label>
 <input id="regMachineNo" placeholder="t.ex. 46320">
 <label>Namn / beskrivning</label>
 <input id="regName" placeholder="t.ex. Ny svetsrobot">
-<label>Kostnadsställe <span class="small">(frivilligt om maskinnummer är ifyllt)</span></label>
-<input id="regCostCenter" placeholder="t.ex. 5340">
+<label>Kostnadsställe <span class="small">(frivilligt – endast de som redan finns i registret)</span></label>
+<div class="acwrap">
+<div class="row">
+<input id="regCostCenter" placeholder="Välj från registret…" readonly>
+<button type="button" class="secondary" style="margin-top:0;max-width:150px" onclick="showRegAddAllKst()">Alla KST</button>
+</div>
+<div id="regAddKstSuggest" class="acsuggest hidden"></div>
+</div>
 <label>Tillverkare <span class="small">(frivilligt)</span></label>
 <input id="regManufacturer" placeholder="t.ex. ABB">
-<button class="primary" onclick="addRegisterEntry()">LÄGG TILL I REGISTRET</button>
+<button class="primary" onclick="addRegisterEntry()">LÄGG TILL ENTITET</button>
 <p class="small" id="regAddStatus" style="margin-top:8px"></p>
+</div>
+</section>
+
+<section id="registerKst" class="hidden">
+<button class="back" onclick="show('settings')">← Tillbaka</button>
+<div class="card">
+<h2>Lägg till/ändra kostnadsställe</h2>
+<p class="small">Sök upp ett befintligt kostnadsställe för att ändra dess beskrivning, eller fyll i ett nytt nummer och en beskrivning för att lägga till det i registret.</p>
+<label>Sök kostnadsställe</label>
+<div class="acwrap">
+<input id="kstSearch" placeholder="Sök på nummer eller beskrivning…" autocomplete="off" oninput="onKstSearchTyped()" onfocus="onKstSearchTyped()">
+<div id="kstSuggest" class="acsuggest hidden"></div>
+</div>
+<div id="kstModeInfo" class="success hidden"></div>
+<label>Kostnadsställe (nummer)</label>
+<input id="kstNo" placeholder="t.ex. 5340" autocomplete="off">
+<label>Beskrivning</label>
+<input id="kstName" placeholder="t.ex. Häftline L60-L250" autocomplete="off">
+<button class="primary" id="kstSaveBtn" onclick="saveKst()">LÄGG TILL KOSTNADSSTÄLLE</button>
+<button class="secondary hidden" id="kstNewBtn" onclick="resetKstForm()">NYTT KOSTNADSSTÄLLE</button>
+<p class="small" id="kstStatus" style="margin-top:8px"></p>
 </div>
 </section>
 
@@ -260,7 +288,7 @@ label{font-size:13px;font-weight:700;color:#374151}
 <button class="back" onclick="show('settings')">← Tillbaka</button>
 <div class="card">
 <h2>Ändra maskindata</h2>
-<p class="small">Sök upp och välj en befintlig maskin för att ändra dess uppgifter. Nya maskiner går inte att skapa här – det gör du via "Lägg till i register".</p>
+<p class="small">Sök upp och välj en befintlig maskin för att ändra dess uppgifter. Nya maskiner går inte att skapa här – det gör du via "Lägg till entitet i register".</p>
 <label>Sök maskin</label>
 <div class="acwrap">
 <input id="regEditSearch" placeholder="t.ex. Pegard 1…" autocomplete="off" oninput="onRegEditSearchTyped()" onfocus="refreshRegEditSuggestions()">
@@ -666,7 +694,7 @@ let fbdb=null,ordersRef=null,withdrawalsRef=null,fbauth=null;
 // 3. Ändra SHARED_LOGIN_EMAIL nedan till den mejladress du skapade kontot med.
 // 4. Firebase-konsolen → Realtime Database → Rules → byt till att kräva inloggning, t.ex.:
 //    { "rules": { ".read": "auth != null", ".write": "auth != null" } }
-const SHARED_LOGIN_EMAIL = "inloggmaterialuttag@hotmail.com";
+const SHARED_LOGIN_EMAIL = "[email protected]";
 
 // ====== AUTOMATISK UTLOGGNING EFTER X TIMMAR ======
 // Ändra AUTO_LOGOUT_HOURS till önskat antal timmar (t.ex. 8 för en arbetsdag,
@@ -1325,6 +1353,8 @@ document.addEventListener('click',e=>{
   hideRegEditKstSuggest();
   hideRegRemoveSuggest();
   hidePartMachineSuggest();
+  hideKstSuggest();
+  hideRegAddKstSuggest();
  }
 });
 
@@ -1450,25 +1480,126 @@ function addRegisterEntry(){
  const name=regName.value.trim();
  const kst=regCostCenter.value.trim();
  const manuf=regManufacturer.value.trim();
+ if(!no)return alert('Ange maskinnummer.');
  if(!name)return alert('Ange namn/beskrivning.');
- if(!no && !kst)return alert('Ange antingen maskinnummer eller kostnadsställe.');
- if(no){
-  const key=fbKey(no);
-  fbdb.ref('register/machines/'+key).set({machineNo:no,name,costCenter:kst,department:'',manufacturer:manuf})
-   .then(()=>{
-    status.textContent=`✅ ${name} (${no}) sparad i registret.`;
-    regMachineNo.value='';regName.value='';regCostCenter.value='';regManufacturer.value='';
-   })
-   .catch(err=>{status.textContent='❌ Kunde inte spara: '+err.message;});
- } else {
-  const key=fbKey(kst)+'_'+Date.now();
-  fbdb.ref('register/costCenters/'+key).set({costCenter:kst,name,department:''})
-   .then(()=>{
-    status.textContent=`✅ "${name}" sparad på kostnadsställe ${kst}.`;
-    regMachineNo.value='';regName.value='';regCostCenter.value='';regManufacturer.value='';
-   })
-   .catch(err=>{status.textContent='❌ Kunde inte spara: '+err.message;});
+ const key=fbKey(no);
+ // Här läggs bara NYA entiteter till – en befintlig maskin ändras under "Ändra maskindata",
+ // så den inte råkar skrivas över i tysthet.
+ if(registerMachinesList.some(m=>String(m.key).toLowerCase()===key.toLowerCase()||String(m.no).toLowerCase()===no.toLowerCase())){
+  return alert(`Maskinnummer ${no} finns redan i registret. Använd "Ändra maskindata" om du vill ändra den.`);
  }
+ fbdb.ref('register/machines/'+key).set({machineNo:no,name,costCenter:kst,department:'',manufacturer:manuf})
+  .then(()=>{
+   status.textContent=`✅ ${name} (${no}) sparad i registret.`;
+   regMachineNo.value='';regName.value='';regCostCenter.value='';regManufacturer.value='';
+  })
+  .catch(err=>{status.textContent='❌ Kunde inte spara: '+err.message;});
+}
+// Kostnadsställe-väljaren i "Lägg till entitet" – bara befintliga kostnadsställen går att välja.
+let regAddKstMatches=[];
+function showRegAddAllKst(){
+ const sorted=registerCostCentersList.slice().sort((a,b)=>
+  a.costCenter.localeCompare(b.costCenter,'sv',{numeric:true})||a.name.localeCompare(b.name,'sv'));
+ regAddKstMatches=sorted.map(c=>({value:c.costCenter,label:c.name}));
+ const box=document.getElementById('regAddKstSuggest');
+ box.innerHTML=regAddKstMatches.length?regAddKstMatches.map((m,i)=>
+  `<div class="aci" data-idx="${i}"><b>${esc(m.value)}</b>${m.label?`<span>${esc(m.label)}</span>`:''}</div>`
+ ).join(''):'<div class="acnone">Inga kostnadsställen i registret.</div>';
+ box.classList.remove('hidden');
+}
+function hideRegAddKstSuggest(){
+ const box=document.getElementById('regAddKstSuggest');
+ if(box){box.classList.add('hidden');box.innerHTML='';}
+ regAddKstMatches=[];
+}
+document.getElementById('regAddKstSuggest').addEventListener('mousedown',e=>{
+ const item=e.target.closest('.aci');
+ if(!item)return;
+ e.preventDefault();
+ const m=regAddKstMatches[parseInt(item.dataset.idx,10)];
+ if(m){regCostCenter.value=m.value;hideRegAddKstSuggest();}
+});
+
+// ====== LÄGG TILL/ÄNDRA KOSTNADSSTÄLLE ======
+// Sök bland befintliga kostnadsställen och ändra beskrivningen, eller skriv in ett
+// nytt nummer + beskrivning och lägg till det. Numret på en befintlig post är låst –
+// maskiner pekar på kostnadsställen via numret, så ett ändrat nummer skulle
+// lämna dem utan matchande kostnadsställe i registret.
+let kstEditKey=null,kstMatches=[];
+function openCostCenterEdit(){
+ resetKstForm();
+ document.getElementById('kstStatus').textContent='';
+ show('registerKst');
+}
+function resetKstForm(){
+ kstEditKey=null;
+ kstSearch.value='';kstNo.value='';kstName.value='';
+ kstNo.readOnly=false;
+ document.getElementById('kstModeInfo').classList.add('hidden');
+ document.getElementById('kstNewBtn').classList.add('hidden');
+ document.getElementById('kstSaveBtn').textContent='LÄGG TILL KOSTNADSSTÄLLE';
+ hideKstSuggest();
+}
+function onKstSearchTyped(){
+ const box=document.getElementById('kstSuggest');
+ const q=kstSearch.value.trim().toLowerCase();
+ if(!q){hideKstSuggest();return;}
+ kstMatches=registerCostCentersList
+  .filter(c=>(c.costCenter+' '+c.name).toLowerCase().includes(q))
+  .sort((a,b)=>a.costCenter.localeCompare(b.costCenter,'sv',{numeric:true})||a.name.localeCompare(b.name,'sv'))
+  .slice(0,30);
+ box.innerHTML=kstMatches.length?kstMatches.map((c,i)=>
+  `<div class="aci" data-idx="${i}"><b>${esc(c.costCenter)}</b><span>${esc(c.name)}</span></div>`
+ ).join(''):'<div class="acnone">Inga kostnadsställen hittades.</div>';
+ box.classList.remove('hidden');
+}
+function hideKstSuggest(){
+ const box=document.getElementById('kstSuggest');
+ if(box){box.classList.add('hidden');box.innerHTML='';}
+ kstMatches=[];
+}
+document.getElementById('kstSuggest').addEventListener('mousedown',e=>{
+ const item=e.target.closest('.aci');
+ if(!item)return;
+ e.preventDefault();
+ const c=kstMatches[parseInt(item.dataset.idx,10)];
+ if(c)selectKst(c);
+});
+function selectKst(c){
+ kstEditKey=c.key;
+ kstSearch.value=c.costCenter;
+ kstNo.value=c.costCenter;kstNo.readOnly=true;
+ kstName.value=c.name;
+ const info=document.getElementById('kstModeInfo');
+ info.textContent=`Ändrar befintligt kostnadsställe ${c.costCenter}. Numret är låst – bara beskrivningen går att ändra.`;
+ info.classList.remove('hidden');
+ document.getElementById('kstNewBtn').classList.remove('hidden');
+ document.getElementById('kstSaveBtn').textContent='SPARA ÄNDRING';
+ document.getElementById('kstStatus').textContent='';
+ hideKstSuggest();
+}
+function saveKst(){
+ const status=document.getElementById('kstStatus');
+ status.textContent='';
+ if(!firebaseEnabled){alert('Synk mot Firebase är inte konfigurerad – kan inte spara till registret.');return;}
+ const no=kstNo.value.trim(),name=kstName.value.trim();
+ if(!no)return alert('Ange kostnadsställe (nummer).');
+ if(!name)return alert('Ange beskrivning.');
+ if(kstEditKey){
+  fbdb.ref('register/costCenters/'+kstEditKey).update({name})
+   .then(()=>{status.textContent=`✅ Beskrivningen för ${no} är ändrad.`;resetKstForm();})
+   .catch(err=>{status.textContent='❌ Kunde inte spara: '+err.message;});
+  return;
+ }
+ // Flera beskrivningar på samma nummer är tillåtet (finns redan i registret), men
+ // exakt samma nummer + beskrivning två gånger är bara en dubblett.
+ if(registerCostCentersList.some(c=>c.costCenter===no&&String(c.name).trim().toLowerCase()===name.toLowerCase())){
+  return alert(`Kostnadsstället ${no} med just den beskrivningen finns redan i registret.`);
+ }
+ const key=fbKey(no)+'_'+Date.now();
+ fbdb.ref('register/costCenters/'+key).set({costCenter:no,name,department:''})
+  .then(()=>{status.textContent=`✅ Kostnadsställe ${no} – "${name}" är tillagt.`;resetKstForm();})
+  .catch(err=>{status.textContent='❌ Kunde inte spara: '+err.message;});
 }
 
 // ====== ÄNDRA I REGISTRET (sök upp befintlig post, autofyll, redigera och spara tillbaka) ======
@@ -1572,7 +1703,7 @@ function saveRegisterEdit(){
  status.textContent='';
  if(!firebaseEnabled){alert('Synk mot Firebase är inte konfigurerad – kan inte spara till registret.');return;}
  if(!(regEditOriginalType==='machine' && regEditOriginalKey)){
-  alert('Sök upp och välj en befintlig maskin innan du kan spara ändringar. Nya maskiner lägger du till via "Lägg till i register".');
+  alert('Sök upp och välj en befintlig maskin innan du kan spara ändringar. Nya maskiner lägger du till via "Lägg till entitet i register".');
   return;
  }
  const no=regEditMachineNo.value.trim();
