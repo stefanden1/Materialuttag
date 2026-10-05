@@ -135,13 +135,14 @@ label{font-size:13px;font-weight:700;color:#374151}
 <button class="secondary" onclick="openExportArchive()">Tidigare exporter</button>
 </div>
 <div class="card" id="registerAdminCard">
-<h2>Ändra i register</h2>
+<h2>Administrera register</h2>
 <button class="secondary" id="registerAdminBtn" onclick="unlockRegisterAdmin()">Administrera register</button>
 <div id="registerAdminButtons" class="hidden">
 <button class="secondary" onclick="openRegisterAdd()">Lägg till entitet i register</button>
 <button class="secondary" onclick="openCostCenterEdit()">Lägg till/ändra kostnadsställe</button>
 <button class="secondary" onclick="openRegisterEdit()">Ändra maskindata</button>
 <button class="secondary" onclick="openRegisterRemove()">Ta bort ur register</button>
+<button class="secondary" onclick="openRegisterBulk()">Exportera/importera register</button>
 </div>
 </div>
 <div class="card">
@@ -260,6 +261,25 @@ label{font-size:13px;font-weight:700;color:#374151}
 <input id="regManufacturer" placeholder="t.ex. ABB">
 <button class="primary" onclick="addRegisterEntry()">LÄGG TILL ENTITET</button>
 <p class="small" id="regAddStatus" style="margin-top:8px"></p>
+</div>
+</section>
+
+<section id="registerBulk" class="hidden">
+<button class="back" onclick="show('settings')">← Tillbaka</button>
+<div class="card">
+<h2>Exportera registret</h2>
+<p class="small">Laddar ner hela registret som en excelfil med bladen Entiteter och Kostnadsställen (plus ett blad med instruktioner). Filen kan ändras i Excel och läsas in igen nedan.</p>
+<button class="primary" onclick="exportRegister()">LADDA NER REGISTRET (EXCEL)</button>
+<p class="small" id="regExportStatus" style="margin-top:8px"></p>
+</div>
+<div class="card">
+<h2>Importera till registret</h2>
+<p class="small">Läser in en excelfil (.xlsx) för att lägga till nya poster eller ändra befintliga i ett svep. Kolumner som saknas i filen lämnas orörda, och ingenting raderas – poster som inte finns med i filen påverkas inte (ta bort poster under "Ta bort ur register"). Tips: ladda ner registret här ovanför först, så har du en kopia innan du importerar.</p>
+<button class="secondary" onclick="document.getElementById('regImportFile').click()">VÄLJ EXCELFIL…</button>
+<input type="file" id="regImportFile" accept=".xlsx,.xls" class="hidden" onchange="onRegImportFile(event)">
+<div id="regImportPreview" style="margin-top:10px"></div>
+<button class="primary hidden" id="regImportApplyBtn" onclick="applyRegImport()">GENOMFÖR IMPORT</button>
+<p class="small" id="regImportStatus" style="margin-top:8px"></p>
 </div>
 </section>
 
@@ -694,7 +714,7 @@ let fbdb=null,ordersRef=null,withdrawalsRef=null,fbauth=null;
 // 3. Ändra SHARED_LOGIN_EMAIL nedan till den mejladress du skapade kontot med.
 // 4. Firebase-konsolen → Realtime Database → Rules → byt till att kräva inloggning, t.ex.:
 //    { "rules": { ".read": "auth != null", ".write": "auth != null" } }
-const SHARED_LOGIN_EMAIL = "inloggmaterialuttag@hotmail.com";
+const SHARED_LOGIN_EMAIL = "[email protected]";
 
 // ====== AUTOMATISK UTLOGGNING EFTER X TIMMAR ======
 // Ändra AUTO_LOGOUT_HOURS till önskat antal timmar (t.ex. 8 för en arbetsdag,
@@ -1600,6 +1620,313 @@ function saveKst(){
  fbdb.ref('register/costCenters/'+key).set({costCenter:no,name,department:''})
   .then(()=>{status.textContent=`✅ Kostnadsställe ${no} – "${name}" är tillagt.`;resetKstForm();})
   .catch(err=>{status.textContent='❌ Kunde inte spara: '+err.message;});
+}
+
+// ====== EXPORTERA / IMPORTERA HELA REGISTRET (EXCEL) ======
+// Export: hela registret (entiteter + kostnadsställen) som en excelfil.
+// Import: läser en excelfil och lägger till/ändrar poster i ett svep. Importen
+// RADERAR ALDRIG något, skriver bara under register/ och görs som EN atomär
+// uppdatering (allt eller inget). Befintliga poster ändras fält för fält, så fält
+// som inte finns med i filen (t.ex. "department") lämnas orörda.
+function readRegisterOnce(){
+ return fbdb.ref('register').once('value').then(snap=>{
+  const v=snap.val()||{};
+  return {machines:v.machines||{},costCenters:v.costCenters||{}};
+ });
+}
+function natCompare(a,b){return String(a).localeCompare(String(b),'sv',{numeric:true})}
+// Lås kolumner till textformat så Excel aldrig tolkar t.ex. "0340" som talet 340.
+function lockTextCols(ws,rowCount,cols){
+ for(let r=1;r<rowCount;r++){
+  cols.forEach(c=>{
+   const cell=ws[XLSX.utils.encode_cell({r,c})];
+   if(cell){cell.t='s';cell.v=String(cell.v==null?'':cell.v);cell.z='@';delete cell.w;}
+  });
+ }
+}
+function openRegisterBulk(){
+ regImportSheets=[];regImportSkipped=[];
+ document.getElementById('regImportPreview').innerHTML='';
+ document.getElementById('regImportApplyBtn').classList.add('hidden');
+ document.getElementById('regImportStatus').textContent='';
+ document.getElementById('regExportStatus').textContent='';
+ show('registerBulk');
+}
+function exportRegister(){
+ const status=document.getElementById('regExportStatus');
+ if(!firebaseEnabled){alert('Synk mot Firebase är inte konfigurerad – registret finns bara i Firebase.');return;}
+ status.textContent='Hämtar registret…';
+ readRegisterOnce().then(reg=>{
+  const machines=Object.keys(reg.machines).map(k=>{
+   const r=reg.machines[k];
+   return {key:k,no:String(r.machineNo||k),name:r.name||'',kst:r.costCenter||'',manuf:r.manufacturer||''};
+  }).sort((a,b)=>natCompare(a.no,b.no)||natCompare(a.key,b.key));
+  const ccs=Object.keys(reg.costCenters).map(k=>{
+   const r=reg.costCenters[k];
+   return {key:k,no:String(r.costCenter||''),name:r.name||''};
+  }).sort((a,b)=>natCompare(a.no,b.no)||natCompare(a.name,b.name));
+  const mRows=[['Id','Maskinnr','Namn / beskrivning','Kostnadsställe','Tillverkare'],...machines.map(m=>[m.key,m.no,m.name,m.kst,m.manuf])];
+  const cRows=[['Id','Kostnadsställe','Beskrivning'],...ccs.map(c=>[c.key,c.no,c.name])];
+  const wsM=XLSX.utils.aoa_to_sheet(mRows),wsC=XLSX.utils.aoa_to_sheet(cRows);
+  lockTextCols(wsM,mRows.length,[0,1,3]);
+  lockTextCols(wsC,cRows.length,[0,1]);
+  wsM['!cols']=[{wch:16},{wch:14},{wch:36},{wch:16},{wch:18}];
+  wsC['!cols']=[{wch:16},{wch:16},{wch:42}];
+  const info=[
+   ['Så här använder du filen'],
+   [''],
+   ['Bladet Entiteter har en rad per maskin/entitet. Bladet Kostnadsställen har en rad per kostnadsställe.'],
+   ['Id är registrets interna nyckel. Ändra inte Id på befintliga rader. Lämna Id tomt på nya rader.'],
+   ['Nya entiteter: fyll i Maskinnr och Namn. Kostnadsställe och Tillverkare är frivilligt. Kostnadsstället måste redan finnas i registret, eller läggas till på bladet Kostnadsställen i samma fil.'],
+   ['Befintliga rader ändras genom att du ändrar texten i cellerna. Numret på ett befintligt kostnadsställe går inte att ändra.'],
+   ['Ingenting raderas via import. Rader som tas bort ur filen påverkar inte registret.'],
+   ['Spara filen som .xlsx innan du importerar den.']
+  ];
+  const wsI=XLSX.utils.aoa_to_sheet(info);
+  wsI['!cols']=[{wch:120}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,wsM,'Entiteter');
+  XLSX.utils.book_append_sheet(wb,wsC,'Kostnadsställen');
+  XLSX.utils.book_append_sheet(wb,wsI,'Instruktion');
+  XLSX.writeFile(wb,`register_${exportTimestamp()}.xlsx`);
+  status.textContent=`✅ Registret är nedladdat: ${machines.length} entiteter och ${ccs.length} kostnadsställen.`;
+ }).catch(err=>{status.textContent='❌ Kunde inte hämta registret: '+err.message;});
+}
+
+// --- Import ---
+// Kolumnrubriker känns igen oavsett stor/liten bokstav, punkter och mellanslag, och
+// även de rubriker som används i SAP-listorna (t.ex. "Mask nr.", "Kost.", "Benämning", "Fabrikat").
+const REG_HEADER_SYNONYMS={
+ id:['id','nyckel'],
+ machineNo:['maskinnr','maskin nr','mask nr','maskinnummer','entitet','entitetsnr','entitetsnummer'],
+ name:['namn beskrivning','namn','benämning','beskrivning'],
+ costCenter:['kostnadsställe','kostnadsställe nr','kostnadsställe nummer','kost','kst'],
+ manufacturer:['tillverkare','fabrikat']
+};
+function regNormHeader(h){return String(h==null?'':h).toLowerCase().replace(/[.\s/_-]+/g,' ').trim()}
+function regFieldOfHeader(h){
+ const n=regNormHeader(h);
+ if(!n)return null;
+ for(const f in REG_HEADER_SYNONYMS)if(REG_HEADER_SYNONYMS[f].includes(n))return f;
+ return null;
+}
+function regCellStr(v){
+ if(v==null)return '';
+ if(typeof v==='number')return String(v);
+ return String(v).trim();
+}
+function regFieldLabel(f){return {machineNo:'Maskinnr',name:'Namn',costCenter:'Kostnadsställe',manufacturer:'Tillverkare'}[f]||f}
+// Hittar rubrikraden (bland de första 10 raderna) och avgör om bladet är entiteter eller kostnadsställen.
+function regDetectSheet(aoa){
+ for(let r=0;r<Math.min(aoa.length,10);r++){
+  const map={};
+  (aoa[r]||[]).forEach((h,c)=>{const f=regFieldOfHeader(h);if(f&&map[f]==null)map[f]=c;});
+  if(map.machineNo!=null)return {type:'entities',headerRow:r,map};
+  if(map.costCenter!=null&&map.name!=null)return {type:'costCenters',headerRow:r,map};
+ }
+ return null;
+}
+let regImportSheets=[],regImportSkipped=[],regImportFileName='',regImportBusy=false;
+function onRegImportFile(e){
+ const file=e.target.files&&e.target.files[0];
+ e.target.value='';
+ if(!file)return;
+ const status=document.getElementById('regImportStatus');
+ if(!firebaseEnabled){alert('Synk mot Firebase är inte konfigurerad – kan inte importera till registret.');return;}
+ status.textContent='Läser filen…';
+ const reader=new FileReader();
+ reader.onload=()=>{
+  try{
+   const wb=XLSX.read(new Uint8Array(reader.result),{type:'array'});
+   status.textContent='';
+   loadRegImportWorkbook(wb,file.name);
+  }catch(err){status.textContent='❌ Kunde inte läsa filen: '+err.message;}
+ };
+ reader.onerror=()=>{status.textContent='❌ Kunde inte läsa filen.';};
+ reader.readAsArrayBuffer(file);
+}
+function loadRegImportWorkbook(wb,fileName){
+ regImportSheets=[];regImportSkipped=[];regImportFileName=fileName||'';
+ wb.SheetNames.forEach(n=>{
+  const ws=wb.Sheets[n];
+  const aoa=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:''});
+  const off=(ws['!ref']&&XLSX.utils.decode_range)?XLSX.utils.decode_range(ws['!ref']).s.r:0;
+  const det=regDetectSheet(aoa);
+  if(!det){if(regNormHeader(n)!=='instruktion')regImportSkipped.push(n);return;}
+  regImportSheets.push({name:n,type:det.type,map:det.map,rows:aoa.slice(det.headerRow+1),firstRowNo:off+det.headerRow+2});
+ });
+ return renderRegImportPreview();
+}
+// Jämför filen med registret som det ser ut just nu. Ändrar inget – ger bara en plan (updates).
+function analyzeRegImport(existing){
+ const lower=s=>String(s==null?'':s).trim().toLowerCase();
+ const res={
+  entities:{created:[],changed:[],unchanged:0,errors:[]},
+  costCenters:{created:[],changed:[],unchanged:0,errors:[]},
+  updates:{}
+ };
+ const ccVals=Object.values(existing.costCenters);
+ const knownKst=new Set(ccVals.map(c=>String(c.costCenter||'').trim()).filter(Boolean));
+ // Kostnadsställen först, så nya nummer i filen kan användas av entiteterna i samma fil.
+ const seenCcId=new Set(),seenCcPair=new Set();
+ let newKeyCounter=0;
+ regImportSheets.filter(s=>s.type==='costCenters').forEach(sh=>{
+  const m=sh.map;
+  sh.rows.forEach((row,i)=>{
+   const rowNo=sh.firstRowNo+i;
+   const id=regCellStr(row[m.id]),no=regCellStr(row[m.costCenter]),name=regCellStr(row[m.name]);
+   if(!id&&!no&&!name)return;
+   const err=msg=>res.costCenters.errors.push({sheet:sh.name,row:rowNo,msg});
+   if(id){
+    const rec=existing.costCenters[id];
+    if(!rec)return err(`Id ${id} finns inte i registret (lämna Id tomt för nya rader).`);
+    if(seenCcId.has(id))return err(`Id ${id} förekommer flera gånger i filen.`);
+    if(!no)return err('Kostnadsställe saknas.');
+    if(no!==String(rec.costCenter||'').trim())return err(`Numret på ett befintligt kostnadsställe går inte att ändra (Id ${id}, ${rec.costCenter}).`);
+    if(!name)return err('Beskrivning saknas.');
+    seenCcId.add(id);
+    if(name!==String(rec.name||'').trim()){
+     res.costCenters.changed.push({key:id,no,before:{name:String(rec.name||'')},after:{name}});
+     res.updates['costCenters/'+id+'/name']=name;
+    } else res.costCenters.unchanged++;
+    return;
+   }
+   if(!no)return err('Kostnadsställe saknas.');
+   if(!name)return err('Beskrivning saknas.');
+   const pair=no+'||'+lower(name);
+   if(seenCcPair.has(pair))return err('Dubblett i filen (samma kostnadsställe och beskrivning förekommer flera gånger).');
+   seenCcPair.add(pair);
+   if(ccVals.some(c=>String(c.costCenter||'').trim()===no&&lower(c.name)===lower(name))){
+    res.costCenters.unchanged++;knownKst.add(no);return;
+   }
+   const key=fbKey(no)+'_'+Date.now()+'_'+(newKeyCounter++);
+   res.costCenters.created.push({key,no,name});
+   res.updates['costCenters/'+key]={costCenter:no,name,department:''};
+   knownKst.add(no);
+  });
+ });
+ // Entiteter
+ const machineList=Object.keys(existing.machines).map(k=>({key:k,rec:existing.machines[k],no:String(existing.machines[k].machineNo||k).trim()}));
+ const byNo=new Map();
+ machineList.forEach(x=>{const k=lower(x.no);if(!byNo.has(k))byNo.set(k,[]);byNo.get(k).push(x);});
+ const seenKeys=new Set(),seenNew=new Set();
+ regImportSheets.filter(s=>s.type==='entities').forEach(sh=>{
+  const m=sh.map;
+  const hasNo=m.machineNo!=null,hasName=m.name!=null,hasKst=m.costCenter!=null,hasManuf=m.manufacturer!=null;
+  sh.rows.forEach((row,i)=>{
+   const rowNo=sh.firstRowNo+i;
+   const id=regCellStr(row[m.id]);
+   const no=regCellStr(row[m.machineNo]),name=regCellStr(row[m.name]);
+   const kst=regCellStr(row[m.costCenter]),manuf=regCellStr(row[m.manufacturer]);
+   if(!id&&!no&&!name&&!kst&&!manuf)return;
+   const err=msg=>res.entities.errors.push({sheet:sh.name,row:rowNo,msg});
+   let key,rec=null,isNew=false;
+   if(id){
+    rec=existing.machines[id];
+    if(!rec)return err(`Id ${id} finns inte i registret (lämna Id tomt för nya rader).`);
+    if(seenKeys.has(id))return err(`Id ${id} förekommer flera gånger i filen.`);
+    if(!no)return err('Maskinnr saknas.');
+    key=id;
+   } else {
+    if(!no)return err('Maskinnr saknas.');
+    const hits=byNo.get(lower(no))||[];
+    if(hits.length>1)return err(`Flera poster i registret har maskinnr ${no} – ange Id för att välja vilken som ska ändras.`);
+    if(hits.length===1){
+     rec=hits[0].rec;key=hits[0].key;
+     if(seenKeys.has(key))return err(`Maskinnr ${no} förekommer flera gånger i filen.`);
+    } else {
+     key=fbKey(no);
+     if(!key)return err(`Maskinnr ${no} går inte att använda som nyckel.`);
+     if(existing.machines[key])return err(`Nyckeln ${key} är redan upptagen av en annan post – ange Id.`);
+     if(seenNew.has(key.toLowerCase()))return err(`Maskinnr ${no} förekommer flera gånger i filen.`);
+     isNew=true;
+    }
+   }
+   const before=rec?{machineNo:String(rec.machineNo||key).trim(),name:String(rec.name||'').trim(),costCenter:String(rec.costCenter||'').trim(),manufacturer:String(rec.manufacturer||'').trim()}:null;
+   if(isNew&&!name)return err('Namn saknas.');
+   if(!isNew&&hasName&&!name)return err('Namn saknas.');
+   if(id&&hasNo&&lower(no)!==lower(before.machineNo)){
+    const clash=(byNo.get(lower(no))||[]).some(x=>x.key!==key);
+    if(clash)return err(`Maskinnr ${no} används redan av en annan post.`);
+   }
+   if(hasKst&&kst&&(isNew||kst!==before.costCenter)&&!knownKst.has(kst)){
+    return err(`Okänt kostnadsställe ${kst} – det måste finnas i registret (eller läggas till på bladet Kostnadsställen i samma fil).`);
+   }
+   if(isNew){
+    seenNew.add(key.toLowerCase());seenKeys.add(key);
+    const obj={machineNo:no,name,costCenter:hasKst?kst:'',department:'',manufacturer:hasManuf?manuf:''};
+    res.updates['machines/'+key]=obj;
+    res.entities.created.push({key,no,name,costCenter:obj.costCenter,manufacturer:obj.manufacturer});
+    return;
+   }
+   seenKeys.add(key);
+   const after={};
+   if(id&&hasNo)after.machineNo=no; // vid träff på maskinnr är numret själva träffen och rörs inte
+   if(hasName)after.name=name;
+   if(hasKst)after.costCenter=kst;
+   if(hasManuf)after.manufacturer=manuf;
+   const diff=Object.keys(after).filter(f=>after[f]!==before[f]);
+   if(!diff.length){res.entities.unchanged++;return;}
+   const b={},a={};
+   diff.forEach(f=>{b[f]=before[f];a[f]=after[f];res.updates['machines/'+key+'/'+f]=after[f];});
+   res.entities.changed.push({key,no:before.machineNo,before:b,after:a});
+  });
+ });
+ return res;
+}
+function buildRegImportPreviewHtml(res){
+ const hasEnt=regImportSheets.some(s=>s.type==='entities'),hasKst=regImportSheets.some(s=>s.type==='costCenters');
+ const part=(title,r)=>`<div class="item"><b>${title}</b><div class="small">${r.created.length} nya · ${r.changed.length} ändrade · ${r.unchanged} oförändrade${r.errors.length?` · <span style="color:#991b1b">${r.errors.length} rader med fel</span>`:''}</div></div>`;
+ let h=`<div class="small">Fil: <b>${esc(regImportFileName)}</b></div>`;
+ if(hasEnt)h+=part('Entiteter',res.entities);
+ if(hasKst)h+=part('Kostnadsställen',res.costCenters);
+ if(regImportSkipped.length)h+=`<p class="small">Blad som inte kändes igen och hoppades över: ${regImportSkipped.map(esc).join(', ')}</p>`;
+ const errs=[...res.entities.errors,...res.costCenters.errors];
+ if(errs.length){
+  h+=`<div class="item"><b style="color:#991b1b">Rader som hoppas över (fel)</b>${errs.slice(0,20).map(e=>`<div class="small">${esc(e.sheet)}, rad ${e.row}: ${esc(e.msg)}</div>`).join('')}${errs.length>20?`<div class="small">…och ${errs.length-20} till.</div>`:''}</div>`;
+ }
+ const ex=[];
+ res.entities.created.slice(0,5).forEach(c=>ex.push(`Ny entitet: ${c.no} – ${c.name}${c.costCenter?` (KST ${c.costCenter})`:''}`));
+ res.entities.changed.slice(0,5).forEach(c=>ex.push(`Ändras ${c.no}: `+Object.keys(c.after).map(f=>`${regFieldLabel(f)} "${c.before[f]}" → "${c.after[f]}"`).join(', ')));
+ res.costCenters.created.slice(0,5).forEach(c=>ex.push(`Nytt kostnadsställe: ${c.no} – ${c.name}`));
+ res.costCenters.changed.slice(0,5).forEach(c=>ex.push(`Kostnadsställe ${c.no}: beskrivning "${c.before.name}" → "${c.after.name}"`));
+ if(ex.length)h+=`<div class="item"><b>Exempel (högst 5 av varje sort)</b>${ex.map(t=>`<div class="small">${esc(t)}</div>`).join('')}</div>`;
+ return h;
+}
+function renderRegImportPreview(){
+ const box=document.getElementById('regImportPreview'),btn=document.getElementById('regImportApplyBtn');
+ btn.classList.add('hidden');
+ if(!regImportSheets.length){
+  box.innerHTML='<p class="small">Hittade inget blad med kolumner som känns igen. Bladet behöver rubriker som Maskinnr och Namn (för entiteter), eller Kostnadsställe och Beskrivning (för kostnadsställen).</p>';
+  return Promise.resolve();
+ }
+ box.innerHTML='<p class="small">Läser registret och jämför med filen…</p>';
+ return readRegisterOnce().then(existing=>{
+  const res=analyzeRegImport(existing);
+  box.innerHTML=buildRegImportPreviewHtml(res);
+  const total=res.entities.created.length+res.entities.changed.length+res.costCenters.created.length+res.costCenters.changed.length;
+  if(total>0){btn.textContent=`GENOMFÖR IMPORT (${total} ändringar)`;btn.classList.remove('hidden');}
+  else box.innerHTML+='<p class="small">Inget att importera – filen stämmer redan med registret.</p>';
+ }).catch(err=>{box.innerHTML='<p class="small">❌ Kunde inte läsa registret: '+esc(err.message)+'</p>';});
+}
+function applyRegImport(){
+ if(regImportBusy)return;
+ const status=document.getElementById('regImportStatus'),btn=document.getElementById('regImportApplyBtn');
+ if(!firebaseEnabled){alert('Synk mot Firebase är inte konfigurerad – kan inte importera till registret.');return;}
+ regImportBusy=true;btn.disabled=true;status.textContent='Importerar…';
+ const done=()=>{regImportBusy=false;btn.disabled=false;};
+ // Jämför om mot registret precis nu, så importen bygger på aktuella data.
+ readRegisterOnce().then(existing=>{
+  const res=analyzeRegImport(existing);
+  if(!Object.keys(res.updates).length){status.textContent='Inget att importera.';done();return;}
+  return fbdb.ref('register').update(res.updates).then(()=>{
+   status.textContent=`✅ Importen är klar: ${res.entities.created.length} nya och ${res.entities.changed.length} ändrade entiteter, ${res.costCenters.created.length} nya och ${res.costCenters.changed.length} ändrade kostnadsställen.`;
+   regImportSheets=[];
+   document.getElementById('regImportPreview').innerHTML='';
+   btn.classList.add('hidden');
+   done();
+  });
+ }).catch(err=>{status.textContent='❌ Importen misslyckades: '+err.message;done();});
 }
 
 // ====== ÄNDRA I REGISTRET (sök upp befintlig post, autofyll, redigera och spara tillbaka) ======
