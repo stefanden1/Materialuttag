@@ -578,7 +578,7 @@ function moveArticleToWithdraw(eamaNo){
  article.value=eamaNo;
  if(machineMatch){
   acuteOrder.value=machineMatch.machineNo||machineMatch.costCenter||'';
-  acuteSelectedMachine={no:machineMatch.machineNo||'',name:machineMatch.name||''};
+  acuteSelectedMachine={no:machineMatch.machineNo||'',name:machineMatch.name||'',kst:machineMatch.costCenter||''};
  }
 }
 let partSearchView='menu'; // 'menu' | 'byMachine' | 'all' – styr vad "← Tillbaka" gör
@@ -714,7 +714,7 @@ let fbdb=null,ordersRef=null,withdrawalsRef=null,fbauth=null;
 // 3. Ändra SHARED_LOGIN_EMAIL nedan till den mejladress du skapade kontot med.
 // 4. Firebase-konsolen → Realtime Database → Rules → byt till att kräva inloggning, t.ex.:
 //    { "rules": { ".read": "auth != null", ".write": "auth != null" } }
-const SHARED_LOGIN_EMAIL = "inloggmaterialuttag@hotmail.com";
+const SHARED_LOGIN_EMAIL = "[email protected]";
 
 // ====== AUTOMATISK UTLOGGNING EFTER X TIMMAR ======
 // Ändra AUTO_LOGOUT_HOURS till önskat antal timmar (t.ex. 8 för en arbetsdag,
@@ -988,7 +988,7 @@ function searchRegisterFull(q){
  return out;
 }
 function searchRegister(q){
- return searchRegisterFull(q).map(m=>({value:m.costCenter||m.machineNo,label:m.label,machineNo:m.machineNo,machineName:m.name}));
+ return searchRegisterFull(q).map(m=>({value:m.costCenter||m.machineNo,label:m.label,machineNo:m.machineNo,machineName:m.name,costCenter:m.costCenter||''}));
 }
 
 function save(){
@@ -1030,7 +1030,7 @@ function render(){
  document.getElementById('withdrawals').innerHTML=db.withdrawals.length?
  db.withdrawals.map((w,i)=>`<div class="item withdrawrow">
    <div>
-     <b>${esc(withdrawalDate(w))} ${w.time}</b> · ${esc(w.article)} · KST ${esc(w.order)}${w.machine?(' · '+esc(w.machine)):''} · ${w.qty} ${esc(w.unit||'St')} · ${remainingText(w.remaining,w.unit)?esc(remainingText(w.remaining,w.unit)):'–'} kvar · ${esc(w.user)}
+     <b>${esc(withdrawalDate(w))} ${w.time}</b> · ${esc(w.article)} · ${esc(withdrawalPlaceText(w))} · ${w.qty} ${esc(w.unit||'St')} · ${remainingText(w.remaining,w.unit)?esc(remainingText(w.remaining,w.unit)):'–'} kvar · ${esc(w.user)}
      ${w.comment?`<div class="small comment">${esc(w.comment)}</div>`:''}
    </div>
    <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
@@ -1049,6 +1049,14 @@ function updateUnitLabels(){
 }
 function remainingText(v,unit){
  return (v===''||v==null)?'':`${v} ${unit||'St'}`;
+}
+// Vad som står som "plats" på en uttagsrad. Nya akututtag skiljer på kostnadsställe
+// (kst) och maskin; äldre uttag och arbetsorder visas som förut.
+function withdrawalPlaceText(w){
+ if(w.acute && w.kst!==undefined){
+  return [w.kst?('KST '+w.kst):'',w.machine||''].filter(Boolean).join(' · ');
+ }
+ return 'KST '+w.order+(w.machine?(' · '+w.machine):'');
 }
 function withdrawalDate(w){
  // Bakåtkompatibelt: äldre uttag saknar ett eget "date"-fält, men har alltid
@@ -1300,7 +1308,7 @@ function stopScanner(){
 
 // ====== SÖK/AUTOCOMPLETE FÖR AKUTUTTAG (maskin eller kostnadsställe) ======
 let acuteSuggestMatches=[];
-let acuteSelectedMachine=null; // {no,name} från vald registerträff, för bakåtspårning
+let acuteSelectedMachine=null; // {no,name,kst} från vald registerträff, för bakåtspårning
 function onAcuteOrderTyped(){
  acuteSelectedMachine=null; // manuell redigering ogiltigförklarar tidigare val
  refreshAcuteSuggestions();
@@ -1345,13 +1353,14 @@ function showAllCostCenters(){
   value:c.costCenter,
   label:[c.name,'KST '+c.costCenter].filter(Boolean).join(' · '),
   machineNo:'',
-  machineName:c.name
+  machineName:c.name,
+  costCenter:c.costCenter
  }));
  renderAcuteSuggestBox(matches,'Inga kostnadsställen i registret.');
 }
 function selectAcuteSuggestion(m){
  acuteOrder.value=m.value;
- acuteSelectedMachine={no:m.machineNo||'',name:m.machineName||''};
+ acuteSelectedMachine={no:m.machineNo||'',name:m.machineName||'',kst:m.costCenter||''};
  hideAcuteSuggest();
 }
 function hideAcuteSuggest(){
@@ -1404,9 +1413,16 @@ function addItem(){
    let o=acuteOrder.value.trim();
    if(!o)return alert('Ange maskinnr/kostnadsställe för akututtaget.');
    currentOrder.no=o;
-   currentOrder.machine=acuteSelectedMachine?
-    [acuteSelectedMachine.name,acuteSelectedMachine.no?('('+acuteSelectedMachine.no+')'):''].filter(Boolean).join(' '):
-    (currentOrder.machine||'');
+   if(acuteSelectedMachine){
+    // Valt i rullmenyn: maskinen (namn + nr) och dess riktiga kostnadsställe (om det finns).
+    currentOrder.machine=[acuteSelectedMachine.name,acuteSelectedMachine.no?('('+acuteSelectedMachine.no+')'):''].filter(Boolean).join(' ');
+    currentOrder.kst=acuteSelectedMachine.kst||'';
+   } else {
+    // Inget valt i rullmenyn: det man skrivit själv är en entitet som inte finns i
+    // registret – numret räknas som maskinnr, inte som kostnadsställe.
+    currentOrder.machine=o;
+    currentOrder.kst='';
+   }
  }
  currentItems.push({article:a,qty:q,unit:u,remaining:remaining.value,comment:comment.value.trim()});
  article.value='';qty.value=1;qtyUnit.value='St';remaining.value='';comment.value='';updateUnitLabels();renderPending();
@@ -1433,6 +1449,7 @@ function register(){
   const oid=order?orderKeyOf(order):null;
   const rec={date,time,article:x.article,order:currentOrder.no,machine:currentOrder.machine||'',qty:x.qty,unit:x.unit||'St',remaining:x.remaining,comment:x.comment||'',user:db.user,shift:db.shift,acute,ts:d.getTime()};
   if(oid)rec.oid=oid;
+  if(acute)rec.kst=currentOrder.kst||''; // äldre uttag saknar fältet och visas/exporteras som förut
   if(firebaseEnabled && isPlainDagtid()){
    // Skrivs alltid till Firebase (så "alla skift"-exporten aldrig tappar
    // data), men visas bara lokalt på den här enheten – se subscribeShift().
@@ -2134,7 +2151,7 @@ function buildWithdrawalRows(list){
   remainingText(w.remaining,w.unit),
   w.acute?'':w.order,      // Ordernr – bara för arbetsorder-uttag
   w.machine||'',
-  w.acute?w.order:'',      // Kostnadsställe – bara för akututtag
+  w.acute?((w.kst!==undefined)?w.kst:w.order):'', // Kostnadsställe – bara för akututtag (äldre uttag: som förut)
   w.user,
   w.shift||'',
   withdrawalDate(w),
@@ -2142,12 +2159,36 @@ function buildWithdrawalRows(list){
   w.comment||''
  ])];
 }
+// Textstorlek (punkter) i den exporterade excelfilen. Ändra här vid behov.
+// SheetJS gratisversion kan inte formatera enskilda celler, så storleken sätts genom
+// att byta standardtypsnittets storlek inne i den färdiga filen (xl/styles.xml). Går
+// något fel returneras filen oförändrad (då blir texten bara standardstorlek).
+const EXPORT_FONT_SIZE=14;
+function xlsxBytesWithFontSize(wb,size){
+ const bytes=XLSX.write(wb,{bookType:'xlsx',type:'array'});
+ try{
+  const cfb=XLSX.CFB.read(new Uint8Array(bytes),{type:'array'});
+  const idx=cfb.FullPaths.findIndex(p=>/(^|\/)xl\/styles\.xml$/.test(p));
+  if(idx<0)return bytes;
+  const entry=cfb.FileIndex[idx];
+  const xml=new TextDecoder('utf-8').decode(Uint8Array.from(entry.content));
+  const m=xml.match(/<fonts[\s\S]*?<\/fonts>/);
+  if(!m)return bytes;
+  const fonts=m[0].replace(/<sz val="[\d.]+"\s*\/>/g,`<sz val="${size}"/>`);
+  if(fonts===m[0]&&!m[0].includes(`<sz val="${size}"/>`))return bytes;
+  const enc=new TextEncoder().encode(xml.replace(m[0],()=>fonts));
+  entry.content=enc;entry.size=enc.length;
+  const out=XLSX.CFB.write(cfb,{fileType:'zip',type:'array'});
+  XLSX.read(out,{type:'array'}); // kontrollera att filen går att läsa innan den används
+  return out;
+ }catch(e){return bytes;}
+}
 // Gör den faktiska excel-filen av färdigbyggda rader och triggar nedladdningen.
 function downloadXlsxFromRows(rows,filename){
  const ws=XLSX.utils.aoa_to_sheet(rows);
  // Lås Ordernr- och Kostnadsställe-kolumnerna till textformat, så Excel
  // aldrig tolkar t.ex. "0340" som talet 340 och tappar den inledande nollan.
- const textCols=[3,5]; // 0-indexerad: EAMA-nr,Antal uttaget,Antal kvar,Ordernr,Maskin/maskinnr,Kostnadsställe,...
+ const textCols=[3,4,5]; // 0-indexerad: EAMA-nr,Antal uttaget,Antal kvar,Ordernr,Maskin/maskinnr,Kostnadsställe,...
  for(let r=1;r<rows.length;r++){
   textCols.forEach(c=>{
    const ref=XLSX.utils.encode_cell({r,c});
@@ -2163,7 +2204,16 @@ function downloadXlsxFromRows(rows,filename){
  ws['!cols']=[{wch:12},{wch:13},{wch:11},{wch:12},{wch:30},{wch:14},{wch:14},{wch:8},{wch:11},{wch:10},{wch:32}];
  const wb=XLSX.utils.book_new();
  XLSX.utils.book_append_sheet(wb,ws,'Uttag');
- XLSX.writeFile(wb,filename);
+ try{
+  const bytes=xlsxBytesWithFontSize(wb,EXPORT_FONT_SIZE);
+  const blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download=filename;
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
+ }catch(e){
+  XLSX.writeFile(wb,filename); // reservväg: vanlig nedladdning (standardstorlek på texten)
+ }
 }
 
 // ====== SÄKERHETSKOPIA AV EXPORTER (7 dagar) + BEKRÄFTELSE ATT NEDLADDNINGEN LYCKADES ======
