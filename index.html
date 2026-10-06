@@ -714,7 +714,7 @@ let fbdb=null,ordersRef=null,withdrawalsRef=null,fbauth=null;
 // 3. Ändra SHARED_LOGIN_EMAIL nedan till den mejladress du skapade kontot med.
 // 4. Firebase-konsolen → Realtime Database → Rules → byt till att kräva inloggning, t.ex.:
 //    { "rules": { ".read": "auth != null", ".write": "auth != null" } }
-const SHARED_LOGIN_EMAIL = "inloggmaterialuttag@hotmail.com";
+const SHARED_LOGIN_EMAIL = "[email protected]";
 
 // ====== AUTOMATISK UTLOGGNING EFTER X TIMMAR ======
 // Ändra AUTO_LOGOUT_HOURS till önskat antal timmar (t.ex. 8 för en arbetsdag,
@@ -1418,10 +1418,11 @@ function addItem(){
     currentOrder.machine=[acuteSelectedMachine.name,acuteSelectedMachine.no?('('+acuteSelectedMachine.no+')'):''].filter(Boolean).join(' ');
     currentOrder.kst=acuteSelectedMachine.kst||'';
    } else {
-    // Inget valt i rullmenyn: det man skrivit själv är en entitet som inte finns i
-    // registret – numret räknas som maskinnr, inte som kostnadsställe.
-    currentOrder.machine=o;
-    currentOrder.kst='';
+    // Inget valt i rullmenyn: finns det inskrivna numret som kostnadsställe i registret
+    // används det som kostnadsställe, annars räknas det som maskinnr.
+    const kstHit=registerCostCentersList.find(c=>String(c.costCenter||'').trim().toLowerCase()===o.toLowerCase());
+    if(kstHit){ currentOrder.machine=''; currentOrder.kst=String(kstHit.costCenter).trim(); }
+    else { currentOrder.machine=o; currentOrder.kst=''; }
    }
  }
  currentItems.push({article:a,qty:q,unit:u,remaining:remaining.value,comment:comment.value.trim()});
